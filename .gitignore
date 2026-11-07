@@ -1,0 +1,16 @@
+node_modules/
+.next/
+dist/
+coverage/
+.cache/
+data/
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+android/.gradle/
+android/local.properties
+android/app/build/
+android/*.jks
+android/*.keystore

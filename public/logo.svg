@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#ffffff"/>
+  <g stroke="#111111" stroke-width="22" stroke-linecap="round" fill="none">
+    <!-- left X eye -->
+    <path d="M150 200 L206 256"/>
+    <path d="M206 200 L150 256"/>
+    <!-- right X eye -->
+    <path d="M306 180 L362 236"/>
+    <path d="M362 180 L306 236"/>
+    <!-- sad mouth (arc) -->
+    <path d="M176 372 Q256 268 346 352" stroke-width="20"/>
+  </g>
+</svg>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="14dp" android:background="#0B0B0E">
+    <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="DON MUSE" android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold" />
+    <TextView android:id="@+id/w_artist" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Tap to open" android:textColor="#9A9AA2" android:textSize="12sp" android:layout_marginTop="2dp" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:layout_marginTop="10dp" android:gravity="center_vertical">
+        <ImageButton android:id="@+id/w_prev" android:layout_width="48dp" android:layout_height="48dp"
+            android:background="#00000000" android:src="@android:drawable/ic_media_previous" android:contentDescription="@string/previous" />
+        <ImageButton android:id="@+id/w_play" android:layout_width="52dp" android:layout_height="52dp"
+            android:background="#00000000" android:src="@android:drawable/ic_media_play" android:contentDescription="@string/play" />
+        <ImageButton android:id="@+id/w_next" android:layout_width="48dp" android:layout_height="48dp"
+            android:background="#00000000" android:src="@android:drawable/ic_media_next" android:contentDescription="@string/next" />
+        <ImageButton android:id="@+id/w_stop" android:layout_width="44dp" android:layout_height="44dp"
+            android:background="#00000000" android:src="@android:drawable/ic_menu_close_clear_cancel" android:contentDescription="@string/stop" />
+    </LinearLayout>
+</LinearLayout>

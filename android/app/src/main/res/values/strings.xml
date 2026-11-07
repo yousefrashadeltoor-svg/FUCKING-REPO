@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">DON MUSE</string>
+    <string name="channel_new_releases">New releases</string>
+    <string name="channel_followed">Followed artists</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="stop">Stop</string>
+</resources>

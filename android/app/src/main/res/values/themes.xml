@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.DonMuse" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#030304</item>
+        <item name="android:navigationBarColor">#030304</item>
+        <item name="android:windowBackground">#030304</item>
+    </style>
+</resources>

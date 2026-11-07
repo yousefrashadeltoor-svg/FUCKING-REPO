@@ -1,0 +1,270 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   DON MUSE — design tokens (Tailwind v4 @theme)
+   Dark-mode-first, OLED black, glassmorphism, fluid type.
+   ========================================================================== */
+
+@theme {
+  --color-void: #030304;
+  --color-space: #050507;
+  --color-panel: #0b0b0e;
+  --color-accent: #1db954;
+  --color-rose: #fa2d55;
+  --color-electric: #4e54c8;
+  --color-gold: #ffd700;
+  --color-cyan: #00d4ff;
+  --color-amber: #ffb800;
+
+  --font-display: "SF Pro Display", "Inter", system-ui, -apple-system, sans-serif;
+  --font-body: "SF Pro Text", "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
+  --animate-spin-slow: spin 14s linear infinite;
+  --animate-pulse-glow: pulse-glow 4s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50% { opacity: 0.9; transform: scale(1.06); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+:root {
+  --dynamic-primary: #1db954;
+  --dynamic-secondary: #4e54c8;
+  --dynamic-glow: rgba(29, 185, 84, 0.25);
+  --app-accent: #1db954;
+  /* layout density (driven by Settings) */
+  --density-card-w: 11rem;
+  --density-row-py: 0.5rem;
+  --density-gap: 0.75rem;
+  --density-card-pad: 0.75rem;
+}
+
+[data-density="compact"] {
+  --density-card-w: 8.75rem;
+  --density-row-py: 0.25rem;
+  --density-gap: 0.5rem;
+  --density-card-pad: 0.5rem;
+}
+
+[data-density="spacious"] {
+  --density-card-w: 13.5rem;
+  --density-row-py: 0.75rem;
+  --density-gap: 1rem;
+  --density-card-pad: 1rem;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-void);
+  color: #f5f5f7;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* app shell scrolls internally */
+}
+
+::selection {
+  background: color-mix(in srgb, var(--app-accent) 40%, transparent);
+}
+
+/* ------------------------------ glass system ----------------------------- */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-player {
+  background: rgba(5, 5, 7, 0.78);
+  backdrop-filter: blur(80px) saturate(200%);
+  -webkit-backdrop-filter: blur(80px) saturate(200%);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 -4px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.glass-modal {
+  background: rgba(10, 10, 12, 0.92);
+  backdrop-filter: blur(100px) saturate(200%);
+  -webkit-backdrop-filter: blur(100px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+/* ------------------------------ scrollbars ------------------------------- */
+.aura-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.aura-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.aura-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+}
+.aura-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* ------------------------------ skeletons -------------------------------- */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.1) 37%,
+    rgba(255, 255, 255, 0.04) 63%
+  );
+  background-size: 400px 100%;
+  animation: shimmer 2.2s linear infinite;
+  border-radius: 12px;
+}
+
+/* ------------------------------ ambient bg ------------------------------- */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 20% 0%, var(--dynamic-glow), transparent 70%),
+    radial-gradient(50% 40% at 85% 10%, color-mix(in srgb, var(--dynamic-secondary) 22%, transparent), transparent 70%),
+    radial-gradient(70% 60% at 50% 110%, color-mix(in srgb, var(--dynamic-primary) 14%, transparent), transparent 70%);
+  filter: blur(30px);
+  transition: background 1.2s ease;
+  animation: pulse-glow 9s ease-in-out infinite;
+}
+
+/* --------------------------- range sliders ------------------------------- */
+input[type="range"].aura-range {
+  direction: ltr;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--app-accent) 0%,
+    var(--app-accent) var(--fill, 50%),
+    rgba(255, 255, 255, 0.14) var(--fill, 50%)
+  );
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"].aura-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform: scale(0.8);
+}
+input[type="range"].aura-range:hover::-webkit-slider-thumb,
+input[type="range"].aura-range:active::-webkit-slider-thumb {
+  opacity: 1;
+  transform: scale(1);
+}
+input[type="range"].aura-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+input[type="range"].aura-range:hover::-moz-range-thumb {
+  opacity: 1;
+}
+
+/* --------------------------- eq sliders (vertical) ------------------------ */
+input[type="range"].aura-eq {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to top,
+    var(--app-accent) 0%,
+    var(--app-accent) var(--fill, 50%),
+    rgba(255, 255, 255, 0.14) var(--fill, 50%)
+  );
+  cursor: pointer;
+  outline: none;
+}
+input[type="range"].aura-eq::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+input[type="range"].aura-eq::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* ------------------------------ misc ------------------------------------- */
+.text-glow {
+  text-shadow: 0 0 24px var(--dynamic-glow);
+}
+
+.card-hover {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s ease, box-shadow 0.35s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px) scale(1.02);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.lyric-line {
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+.lyric-line.active {
+  transform: scale(1.06);
+  color: #fff;
+  text-shadow: 0 0 28px var(--dynamic-glow);
+  font-weight: 700;
+}
+.lyric-line.past {
+  opacity: 0.35;
+}
+.lyric-line.future {
+  opacity: 0.6;
+}
