@@ -34,6 +34,8 @@ export interface SettingsState {
   autoOfflineLibrary: boolean;
   /** show background-playing notifications on Android */
   backgroundPlayback: boolean;
+  /** prefer the lowest bitrate / skip video on metered connections */
+  dataSaver: boolean;
   setQuality: (q: Quality) => void;
   setAutoplay: (v: boolean) => void;
   setLoudnessNormalization: (v: boolean) => void;
@@ -47,6 +49,7 @@ export interface SettingsState {
   setHapticsOnTap: (v: boolean) => void;
   setAutoOfflineLibrary: (v: boolean) => void;
   setBackgroundPlayback: (v: boolean) => void;
+  setDataSaver: (v: boolean) => void;
 }
 
 export const ACCENT_HEX: Record<Accent, string> = {
@@ -160,6 +163,7 @@ export const useSettingsStore = create<SettingsState>()(
       hapticsOnTap: true,
       autoOfflineLibrary: true,
       backgroundPlayback: true,
+      dataSaver: false,
       setQuality: (quality) => set({ quality }),
       setAutoplay: (autoplay) => set({ autoplay }),
       setLoudnessNormalization: (loudnessNormalization) => set({ loudnessNormalization }),
@@ -173,6 +177,7 @@ export const useSettingsStore = create<SettingsState>()(
       setHapticsOnTap: (hapticsOnTap) => set({ hapticsOnTap }),
       setAutoOfflineLibrary: (autoOfflineLibrary) => set({ autoOfflineLibrary }),
       setBackgroundPlayback: (backgroundPlayback) => set({ backgroundPlayback }),
+      setDataSaver: (dataSaver) => set({ dataSaver }),
     }),
     {
       name: "aura-settings",

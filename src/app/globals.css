@@ -431,6 +431,22 @@ input[type="range"].aura-eq::-moz-range-thumb {
 }
 [data-motion="reduced"] .page-enter { animation: none; }
 
+/* High-refresh profile: shorter, springier transitions so 120/144/240 Hz panels
+   actually show more frames instead of easing over the same wall-clock time.
+   will-change is scoped to the surfaces that animate, never globally. */
+[data-motion="fast"] .page-enter { animation-duration: 0.18s; }
+[data-motion="fast"] .card-hover { transition-duration: 0.18s; }
+[data-motion="fast"] .sheen::after { animation-duration: 3.2s; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* --------------------------- premium utilities --------------------------- */
 
 .sheen {

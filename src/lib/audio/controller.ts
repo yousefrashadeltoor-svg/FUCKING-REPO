@@ -240,8 +240,20 @@ export function installPlaybackController(): () => void {
   const unsubSettings = useSettingsStore.subscribe(() => {
     const st = useSettingsStore.getState();
     engine.setLoudnessNormalization(st.loudnessNormalization);
-    engine.setQuality(st.quality);
+    // Data saver overrides the chosen quality while the user is on a metered /
+    // slow connection — it is a real preference, not a decorative toggle.
+    const meter = typeof navigator !== "undefined"
+      ? (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection
+      : undefined;
+    const save = st.dataSaver && (meter?.saveData !== false);
+    engine.setQuality(save ? "low" : st.quality);
   });
+  // Apply the current settings once, immediately.
+  {
+    const st = useSettingsStore.getState();
+    engine.setLoudnessNormalization(st.loudnessNormalization);
+    engine.setQuality(st.dataSaver ? "low" : st.quality);
+  }
 
   // --- sleep timer
   let sleepTimer: ReturnType<typeof setTimeout> | null = null;
