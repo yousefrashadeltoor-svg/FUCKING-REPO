@@ -15,7 +15,13 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await getDemoUser();
   const sections = await buildHomeSections(user.id);
-  return Response.json({ sections });
+  // Two consecutive loads must never look identical (the user asked for a home
+  // page that changes on every refresh) — the sources are shuffled upstream,
+  // and the response is explicitly uncacheable so no CDN/proxy freezes it.
+  return Response.json(
+    { sections, builtAt: new Date().toISOString() },
+    { headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
 }
 
 export async function buildHomeSections(userId: number): Promise<HomeSectionDTO[]> {

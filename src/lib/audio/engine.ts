@@ -463,16 +463,30 @@ export class UniversalPlaybackEngine {
     this.stopTick();
   }
 
-  /** Hard stop and release the source (radio / Quran / TV). */
+  /**
+   * Hard stop and release EVERY source (radio / Quran / TV / music).
+   *
+   * All three backends are silenced regardless of which one currently owns the
+   * output: that is what makes the little "X" in the playbar — and stopping a
+   * surah — truly end playback instead of letting a previously started song
+   * reappear on the next play().
+   */
   stop(): void {
     this.stopTick();
-    this.loadToken++;
-    if (this.kind === "native") nativePlayback.stop();
-    if (this.kind === "youtube") this.yt?.pause();
+    this.loadToken++; // invalidates any in-flight load/play promise
+    try {
+      nativePlayback.stop();
+    } catch {
+      /* no native host */
+    }
+    this.yt?.pause();
     this.hardStopElements();
+    this.kind = "audio";
     this.loadedKey = null;
     this.current = null;
     this.lastDuration = 0;
+    this.lastEmittedPos = -1;
+    this.endedGuard = false;
     this.emit("pause");
   }
 
@@ -586,6 +600,9 @@ export class UniversalPlaybackEngine {
   /** Warm the idle element so the next track starts instantly (audio path). */
   preloadNext(url: string | undefined | null) {
     if (!url || this.kind !== "audio" || this.els.length < 2) return;
+    // Never touch an element that still has live audio — preloading over the
+    // playing element is one of the classic "ghost playback" causes.
+    if (!this.els[this.active]?.paused && this.els[this.active]?.src) return;
     const idle = this.els[1 - this.active];
     if (idle.src !== url) {
       try {

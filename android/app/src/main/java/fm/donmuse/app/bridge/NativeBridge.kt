@@ -227,6 +227,14 @@ class NativeBridge(
     @JavascriptInterface
     fun playQueue(json: String): String {
         return try {
+            // Start (or reconnect to) the foreground service BEFORE the queue is
+            // handed over, so playback keeps running when the activity dies.
+            val svc = Intent(activity, fm.donmuse.app.playback.PlaybackService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                activity.startForegroundService(svc)
+            } else {
+                activity.startService(svc)
+            }
             NativePlayer.setQueue(activity, json)
             WidgetUpdater.refresh(activity)
             "ok"

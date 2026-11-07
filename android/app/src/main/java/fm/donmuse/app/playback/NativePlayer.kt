@@ -25,11 +25,18 @@ object NativePlayer {
     private var appContext: Context? = null
     private var sleepHandler: Handler? = null
     private var sleepRunnable: Runnable? = null
+    /** Queue handed over before the service finished connecting. */
+    private var pendingQueue: String? = null
 
     fun attach(exo: ExoPlayer, mediaSession: MediaSession, ctx: Context) {
         player = exo
         session = mediaSession
         appContext = ctx.applicationContext
+        // Anything the UI sent while the service was still starting.
+        pendingQueue?.let { json ->
+            pendingQueue = null
+            runCatching { setQueue(ctx, json) }
+        }
         exo.addListener(object : Player.Listener {
             override fun onEvents(p: Player, events: Player.Events) {
                 WidgetUpdater.refresh(appContext ?: return)
@@ -49,8 +56,13 @@ object NativePlayer {
 
     /** Replace the queue with the items sent by the UI and start playing. */
     fun setQueue(ctx: Context, json: String) {
-        val exo = player ?: return
         appContext = ctx.applicationContext
+        val exo = player
+        if (exo == null) {
+            // Service not connected yet — remember it and replay on attach.
+            pendingQueue = json
+            return
+        }
         val root = JSONObject(json)
         val items = root.optJSONArray("items") ?: JSONArray()
         val index = root.optInt("index", 0)

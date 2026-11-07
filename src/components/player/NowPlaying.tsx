@@ -144,6 +144,18 @@ export function NowPlaying() {
     else exitPlayerMode();
   }, [open]);
 
+  // Lock the page behind the sheet: without this, dragging on mobile scrolls
+  // the page underneath and the sheet appears to "fight" the gesture.
+  useEffect(() => {
+    if (!open) return;
+    const body = document.body;
+    const prev = body.style.overflow;
+    body.style.overflow = "hidden";
+    return () => {
+      body.style.overflow = prev;
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -257,7 +269,10 @@ export function NowPlaying() {
         )}
         <div className="pointer-events-none absolute inset-0 -z-10 bg-black/25" />
 
-        {/* ---------------- drag zone + top bar ---------------- */}
+        {/* top safe area (notch / status bar) */}
+        <div className="shrink-0" style={{ height: "env(safe-area-inset-top)" }} />
+
+        {/* ---------------- drag zone (handle + artwork) ---------------- */}
         <motion.div
           drag="y"
           dragDirectionLock
@@ -272,7 +287,7 @@ export function NowPlaying() {
             const h = containerRef.current?.clientHeight ?? window.innerHeight;
             settle(info.offset.y, info.velocity.y, h);
           }}
-          className="relative z-10 cursor-grab touch-none active:cursor-grabbing"
+          className="relative z-10 flex min-h-0 flex-1 cursor-grab touch-none flex-col active:cursor-grabbing"
         >
           <div className="mx-auto mt-2 h-1.5 w-11 rounded-full bg-white/35" />
           <div className="flex items-start justify-between px-4 pb-1 pt-2">
@@ -290,7 +305,12 @@ export function NowPlaying() {
               </p>
             </div>
             <button
-              onClick={() => setInfoSheet(true)}
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setInfoSheet(true);
+              }}
               aria-label={t("info")}
               title={t("info")}
               className="grid size-11 place-items-center rounded-full bg-white/[0.08] text-white/85 backdrop-blur-md transition-colors hover:bg-white/15"
@@ -298,8 +318,6 @@ export function NowPlaying() {
               <Info className="size-5" />
             </button>
           </div>
-        </motion.div>
-
         {/* ---------------- artwork ---------------- */}
         <div className="relative flex min-h-0 flex-1 items-center justify-center px-7">
           <motion.div
@@ -334,6 +352,7 @@ export function NowPlaying() {
             )}
           </motion.div>
         </div>
+        </motion.div>
 
         {/* ---------------- meta ---------------- */}
         <div className="relative px-5 pb-1 pt-3 sm:px-8">
@@ -374,9 +393,13 @@ export function NowPlaying() {
 
           {/* scrub */}
           <div className="mt-4 flex items-center gap-3" dir="ltr">
-            <span className="w-10 shrink-0 text-right font-mono text-[11px] text-white/55">{formatTime(positionSec)}</span>
+            <span className="w-11 shrink-0 text-end font-mono text-[11px] tabular-nums text-white/60">
+              {track.source === "radio" ? "LIVE" : formatTime(positionSec)}
+            </span>
             <ProgressSlider waveform={track.waveform} durationSec={dur} className="flex-1" />
-            <span className="w-10 shrink-0 font-mono text-[11px] text-white/55">{formatTime(dur)}</span>
+            <span className="w-11 shrink-0 font-mono text-[11px] tabular-nums text-white/60">
+              {track.source === "radio" ? "LIVE" : dur > 0 ? formatTime(dur) : "--:--"}
+            </span>
           </div>
 
           {/* transport */}
@@ -409,7 +432,7 @@ export function NowPlaying() {
           </div>
 
           {/* secondary row — volume · eq · speed · download · share · close */}
-          <div className="mt-3 flex items-center gap-1.5 pb-5">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-1.5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
             <button
               onClick={toggleMute}
               aria-label={t("mute")}
