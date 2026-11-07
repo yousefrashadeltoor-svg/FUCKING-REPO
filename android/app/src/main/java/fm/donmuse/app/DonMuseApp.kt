@@ -55,8 +55,12 @@ class DonMuseApp : Application() {
         const val CHANNEL_FOLLOWED = "followed_artists"
         const val CHANNEL_PLAYBACK = "playback"
 
-        /** The web app that provides the UI (same project, built by CI). */
-        const val WEB_HOST = "donmuse.pages.dev"
+        /**
+         * The web app that provides the UI (same project, built by CI).
+         * Overridden at build time: ./gradlew -PwebHost=my.site
+         * (see app/build.gradle.kts → BuildConfig.WEB_HOST).
+         */
+        val WEB_HOST: String = BuildConfig.WEB_HOST
 
         /**
          * The UI is loaded from the bundled asset build when present
@@ -71,5 +75,19 @@ class DonMuseApp : Application() {
         fun startUrl(ctx: Context): String =
             if (hasBundledUi(ctx)) "file:///android_asset/www/index.html"
             else "https://$WEB_HOST"
+
+        /**
+         * Deep link → concrete URL for either host.
+         * Bundled UI ships one index.html per route, so a path maps to
+         * `www/<route>/index.html`; the hosted build takes the normal path.
+         */
+        fun routeUrl(ctx: Context, path: String): String {
+            val clean = path.trim('/').split('?').first().split('#').first()
+            if (hasBundledUi(ctx)) {
+                return if (clean.isEmpty()) startUrl(ctx)
+                else "file:///android_asset/www/$clean/index.html"
+            }
+            return if (clean.isEmpty()) startUrl(ctx) else "https://$WEB_HOST/$clean"
+        }
     }
 }

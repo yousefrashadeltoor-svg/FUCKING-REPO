@@ -14,3 +14,6 @@ android/build/
 android/local.properties
 android/.idea/
 android/app/*.jks
+
+# bundled web UI inside the APK (generated at build time)
+android/app/src/main/assets/www/

@@ -25,6 +25,27 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Bundle the real web UI inside the APK so the app also opens with no
+      # network (assets/www). The app falls back to the hosted build if absent.
+      - name: Build web UI for bundling
+        working-directory: .
+        env:
+          NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --ignore-scripts || npm install --ignore-scripts
+          npm run build
+          node scripts/gh-pages-export.mjs
+          mkdir -p android/app/src/main/assets
+          rm -rf android/app/src/main/assets/www
+          cp -r out android/app/src/main/assets/www
+        continue-on-error: true
+
       - uses: android-actions/setup-android@v3
 
       # The repo carries only gradle-wrapper.properties, so the wrapper is
@@ -39,6 +60,8 @@ jobs:
           chmod +x gradlew
 
       - name: Build debug APK
+        env:
+          DONMUSE_WEB_HOST: ${{ vars.DONMUSE_WEB_HOST }}
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Build release APK (signed when secrets exist, else debug-signed)

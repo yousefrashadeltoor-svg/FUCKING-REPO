@@ -32,6 +32,17 @@ export interface DeviceSongDTO {
   isVideo: boolean;
 }
 
+export interface ResolvedStream {
+  /** absolute URL the native player can open directly */
+  url: string;
+  /** true when the URL is a direct media file (not a playlist/manifest) */
+  direct: boolean;
+  /** mime type reported by the server */
+  mime: string | null;
+  /** iframe fallback (YouTube embed) when no direct URL exists */
+  embed: string | null;
+}
+
 export interface NativePlaybackState {
   playing: boolean;
   buffering: boolean;
@@ -185,6 +196,36 @@ export const nativePlayback = {
     return false;
   },
 
+  /**
+   * Ask the server for a DIRECT media URL for a catalog track, so ExoPlayer can
+   * stream it itself and keep playing in the background. Returns null on the web
+   * (the browser already plays through <audio>/YouTube).
+   */
+  async resolve(trackId: number, appOrigin?: string): Promise<ResolvedStream | null> {
+    const b = bridge();
+    if (!b || !Number.isFinite(trackId)) return null;
+    try {
+      // On Android the UI may be served from file:// — use the server origin.
+      const info = parse<{ server?: string }>(safe(() => b.platformInfo(), "{}"), {});
+      const origin = appOrigin ?? (info.server && /^https?:/.test(info.server) ? info.server : window.location.origin);
+      const res = await fetch(`${origin}/api/tracks/${trackId}/stream?resolve=1`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { url?: string; mime?: string; embed?: string; direct?: boolean };
+      if (!data.url && !data.embed) return null;
+      return {
+        url: data.url ? (data.url.startsWith("/") ? `${origin}${data.url}` : data.url) : "",
+        direct: data.direct !== false,
+        mime: data.mime ?? null,
+        embed: data.embed ?? null,
+      };
+    } catch {
+      return null;
+    }
+  },
+
   load(
     track: {
       id: number;
@@ -196,13 +237,12 @@ export const nativePlayback = {
       streamUrl: string;
       source: string;
     },
-    opts: { autoplay?: boolean; startAt?: number } = {},
+    opts: { autoplay?: boolean; startAt?: number; uri?: string; queue?: NativeQueueItem[] } = {},
   ): void {
     const b = bridge();
     if (!b) return;
-    const uri = track.streamUrl.startsWith("/")
-      ? new URL(track.streamUrl, window.location.origin).toString()
-      : track.streamUrl;
+    const raw = opts.uri ?? track.streamUrl;
+    const uri = raw.startsWith("/") ? new URL(raw, window.location.origin).toString() : raw;
     const item: NativeQueueItem = {
       id: String(track.id),
       uri,
@@ -217,7 +257,7 @@ export const nativePlayback = {
       () =>
         b.playQueue(
           JSON.stringify({
-            items: [item],
+            items: opts.queue && opts.queue.length ? opts.queue : [item],
             index: 0,
             autoplay: opts.autoplay !== false,
             startAtMs: Math.max(0, Math.round((opts.startAt ?? 0) * 1000)),

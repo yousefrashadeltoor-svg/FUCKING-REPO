@@ -7,6 +7,10 @@ android {
     namespace = "fm.donmuse.app"
     compileSdk = 35
 
+    val webHost: String = (project.findProperty("webHost") as String?)
+        ?: System.getenv("DONMUSE_WEB_HOST")
+        ?: "donmuse.pages.dev"
+
     defaultConfig {
         applicationId = "fm.donmuse.app"
         minSdk = 26
@@ -14,7 +18,9 @@ android {
         versionCode = 20
         versionName = "2.0.0"
         vectorDrawables { useSupportLibrary = true }
-        buildConfigField("String", "WEB_HOST", "\"donmuse.pages.dev\"")
+        // Where the UI is served from (override: -PwebHost=… / DONMUSE_WEB_HOST).
+        buildConfigField("String", "WEB_HOST", "\"$webHost\"")
+
     }
 
     buildFeatures {

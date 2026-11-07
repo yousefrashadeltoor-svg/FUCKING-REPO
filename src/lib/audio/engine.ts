@@ -27,6 +27,20 @@ import type { TrackDTO } from "@/lib/types";
 import { YouTubeBridge } from "./youtube-bridge";
 import { nativePlayback } from "@/lib/platform/native";
 import { apiUrl } from "@/lib/api-base";
+import { usePlayerStore } from "@/stores/player-store";
+
+/**
+ * Read the queue without creating a circular import at module load: the store
+ * imports nothing from the engine, but keeping the access behind a function
+ * means the engine stays usable (and testable) before the store is hydrated.
+ */
+function peekPlayerState() {
+  try {
+    return usePlayerStore.getState();
+  } catch {
+    return null;
+  }
+}
 
 export type EngineEvent =
   | "play"
@@ -287,6 +301,35 @@ export class UniversalPlaybackEngine {
     // The element is only used as a source; its own gain must not double-apply.
   }
 
+  /**
+   * Queue handed to ExoPlayer: the current track followed by whatever the store
+   * has lined up, so "next"/"previous" work from the notification and widgets
+   * even when the WebView is not running.
+   */
+  private nativeQueueFrom(track: TrackDTO, overrideUri?: string): { id: string; uri: string; title: string; artist: string; album: string; artUri: string | null }[] {
+    const toItem = (t: TrackDTO, uri?: string) => ({
+      id: String(t.id),
+      uri: uri ?? t.streamUrl,
+      title: t.title,
+      artist: t.artistName,
+      album: t.albumTitle ?? "",
+      artUri: t.coverUrl && /^https?:/.test(t.coverUrl) ? t.coverUrl : null,
+    });
+    const out = [toItem(track, overrideUri)];
+    try {
+      const state = peekPlayerState();
+      const rest = (state?.queue ?? []).slice((state?.index ?? -1) + 1, (state?.index ?? -1) + 26);
+      for (const t of rest) {
+        if (!t || t.id === track.id) continue;
+        if (!/^(https?|content|file):/.test(t.streamUrl)) continue;
+        out.push(toItem(t));
+      }
+    } catch {
+      /* store not ready — the single track still plays */
+    }
+    return out;
+  }
+
   private computeNormGain(track: TrackDTO): number {
     if (!this.loudnessNormalization) return 1;
     const lufs = Number.isFinite(track.loudnessLufs) ? track.loudnessLufs : TARGET_LUFS;
@@ -336,7 +379,35 @@ export class UniversalPlaybackEngine {
       this.kind = "native";
       this.hardStopElements();
       this.stopTick();
-      nativePlayback.load(track, { autoplay, startAt });
+      // Catalog tracks are served by our own API: resolve a direct media URL so
+      // ExoPlayer (not the WebView) streams it — that is what keeps audio alive
+      // in the background, on the lock screen and in the widgets.
+      const needsResolve = track.id > 0 && !/^(content|file):\/\//.test(track.streamUrl);
+      if (needsResolve) {
+        void nativePlayback.resolve(track.id).then((res) => {
+          if (token !== this.loadToken) return; // a newer load took over
+          if (!res?.url && res?.embed) {
+            // No direct audio for this item (region-locked YouTube): fall back to
+            // the official embed so the user still hears the song.
+            const vid = res.embed.match(/embed\/([\w-]{6,})/)?.[1] ?? track.sourceId ?? null;
+            this.kind = "youtube";
+            const yt = this.getYT();
+            yt.ensurePlayer();
+            if (vid) yt.loadVideo(vid, autoplay);
+            this.startTick();
+            return;
+          }
+          nativePlayback.load(track, {
+            autoplay,
+            startAt,
+            uri: res?.url || track.streamUrl,
+            queue: this.nativeQueueFrom(track, res?.url),
+          });
+        });
+      } else {
+        nativePlayback.load(track, { autoplay, startAt, queue: this.nativeQueueFrom(track) });
+      }
+      this.startTick();
       return;
     }
 

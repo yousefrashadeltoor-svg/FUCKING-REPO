@@ -159,19 +159,13 @@ class MainActivity : ComponentActivity() {
         host == DonMuseApp.WEB_HOST || host.endsWith(".donmuse.app") || host == "localhost"
 
     private fun firstUrl(intent: Intent?): String {
-        val base = DonMuseApp.startUrl(this)
-        val data: Uri? = intent?.data
-        if (data != null) {
-            return when {
-                data.scheme == "donmuse" -> {
-                    val path = data.path?.trimStart('/').orEmpty()
-                    if (path.isEmpty()) base else "$base/$path"
-                }
-                data.scheme?.startsWith("content") == true -> "$base/my-music?open=${Uri.encode(data.toString())}"
-                else -> base
-            }
+        val data: Uri? = intent?.data ?: return DonMuseApp.startUrl(this)
+        return when {
+            data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
+            data.scheme?.startsWith("content") == true ->
+                DonMuseApp.routeUrl(this, "my-music") + "?open=" + Uri.encode(data.toString())
+            else -> data.toString()
         }
-        return base
     }
 
     /** Android 13+ media/notification permissions + storage on older versions. */
@@ -196,13 +190,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val data: Uri? = intent.data ?: return
-        val base = DonMuseApp.startUrl(this)
         val target = when {
-            data.scheme == "donmuse" -> {
-                val path = data.path?.trimStart('/').orEmpty()
-                if (path.isEmpty()) base else "$base/$path"
-            }
-            data.scheme?.startsWith("content") == true -> "$base/my-music?open=${Uri.encode(data.toString())}"
+            data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
+            data.scheme?.startsWith("content") == true ->
+                DonMuseApp.routeUrl(this, "my-music") + "?open=" + Uri.encode(data.toString())
             else -> data.toString()
         }
         webView.loadUrl(target)

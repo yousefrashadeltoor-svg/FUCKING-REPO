@@ -2,8 +2,6 @@ package fm.donmuse.app.bridge
 
 import android.Manifest
 import android.app.Activity
-import android.content.ContentUris
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.RingtoneManager
@@ -19,7 +17,7 @@ import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.ContextCompat
-import fm.donmuse.app.DonMuseApp
+import fm.donmuse.app.BuildConfig
 import fm.donmuse.app.data.MediaStoreRepository
 import fm.donmuse.app.playback.NativePlayer
 import fm.donmuse.app.widget.WidgetUpdater
@@ -43,7 +41,8 @@ class NativeBridge(
     private val permissionLauncher: ActivityResultLauncher<Array<String>>,
     private val manageStorageLauncher: ActivityResultLauncher<Intent>,
 ) {
-    private val prefs = activity.getSharedPreferences("donmuse_store", Context.MODE_PRIVATE)
+    // App-private JSON document (no size limits, survives process death).
+    private val prefs = AppStorage(activity)
     private val repo = MediaStoreRepository(activity)
 
     /* ----------------------------- platform info ---------------------------- */
@@ -201,24 +200,24 @@ class NativeBridge(
     /* ------------------------------- storage -------------------------------- */
 
     @JavascriptInterface
-    fun storeGet(key: String): String = prefs.getString(key, "") ?: ""
+    fun storeGet(key: String): String = prefs.get(key) ?: ""
 
     @JavascriptInterface
     fun storeSet(key: String, value: String): String {
-        prefs.edit().putString(key, value).apply()
+        prefs.set(key, value)
         return "ok"
     }
 
     @JavascriptInterface
     fun storeRemove(key: String): String {
-        prefs.edit().remove(key).apply()
+        prefs.remove(key)
         return "ok"
     }
 
     @JavascriptInterface
     fun storeKeys(): String {
         val arr = JSONArray()
-        prefs.all.keys.forEach { arr.put(it) }
+        prefs.keys().forEach { arr.put(it) }
         return arr.toString()
     }
 
