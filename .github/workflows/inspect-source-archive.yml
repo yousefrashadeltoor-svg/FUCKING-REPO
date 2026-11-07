@@ -1,0 +1,86 @@
+name: Inspect DON MUSE source archive
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/inspect-source-archive.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Extract and inventory source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+          test -n "$archive"
+          mkdir -p "$RUNNER_TEMP/don-muse-source"
+          unzip -q "$archive" -d "$RUNNER_TEMP/don-muse-source"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "don-muse-source"
+          report = []
+          sensitive_names = []
+          count = 0
+          total = 0
+          for p in sorted(root.rglob("*")):
+              if not p.is_file():
+                  continue
+              rel = p.relative_to(root).as_posix()
+              size = p.stat().st_size
+              count += 1
+              total += size
+              report.append(f"{size:>10}  {rel}")
+              low = rel.lower()
+              if (low.endswith((".pem", ".p12", ".pfx", ".jks", ".keystore"))
+                  or Path(rel).name.lower() in {"id_rsa", "id_ed25519", "credentials.json"}
+                  or (Path(rel).name.lower().startswith(".env") and Path(rel).name.lower() not in {".env.example", ".env.sample", ".env.template"})):
+                  sensitive_names.append(rel)
+          out = [
+              f"files={count}",
+              f"total_bytes={total}",
+              "TOP_LEVEL:",
+              *[f"  {p.name}/" if p.is_dir() else f"  {p.name}" for p in sorted(root.iterdir())],
+              "",
+              "POSSIBLE_SECRET_OR_LOCAL_CREDENTIAL_FILES (names only):",
+              *(sensitive_names or ["  none detected by filename"]),
+              "",
+              "FILE INVENTORY:",
+              *report
+          ]
+          Path(os.environ["RUNNER_TEMP"], "inspection.txt").write_text("\n".join(out), encoding="utf-8")
+          import zipfile
+          out_zip = Path(os.environ["RUNNER_TEMP"], "don-muse-source-review.zip")
+          with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(root.rglob("*")):
+                  if not p.is_file():
+                      continue
+                  rel = p.relative_to(root)
+                  parts = {x.lower() for x in rel.parts}
+                  name = p.name.lower()
+                  if parts & {".git", "node_modules", ".next", ".cache", "coverage"}:
+                      continue
+                  if (name.endswith((".pem", ".p12", ".pfx", ".jks", ".keystore"))
+                      or name in {"id_rsa", "id_ed25519", "credentials.json"}
+                      or (name.startswith(".env") and name not in {".env.example", ".env.sample", ".env.template"})):
+                      continue
+                  z.write(p, rel.as_posix())
+          PY
+      - name: Upload inspection report and review copy
+        uses: actions/upload-artifact@v4
+        with:
+          name: don-muse-source-inspection
+          path: |
+            ${{ runner.temp }}/inspection.txt
+            ${{ runner.temp }}/don-muse-source-review.zip
+          if-no-files-found: error
