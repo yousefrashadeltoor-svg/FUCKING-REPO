@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getDemoUser, searchAll } from "@/lib/server/queries";
+import { getDemoUser, hydrateArtists, searchAll } from "@/lib/server/queries";
 import { searchYouTubeAlbums, searchYouTubeArtists, searchYouTubeMusic } from "@/lib/server/youtube";
 import { searchAudius, searchSoundCloud, searchArchive, searchJamendo, searchBandcamp, searchDailymotion, searchOdysee } from "@/lib/server/platforms";
 import { searchDeezer, searchITunes, searchSpotify } from "@/lib/server/majors";
@@ -68,10 +68,11 @@ export async function GET(req: NextRequest) {
     const rows = await db.select({ id: artistsTbl.id, name: artistsTbl.name }).from(artistsTbl).where(inArray(artistsTbl.id, [...artistNames.keys()]));
     for (const r of rows) artistNames.set(r.id, r.name);
   }
-  const artistsOrdered = [
-    ...artistRowsYT.map((r) => ({ id: r.id, name: r.name, slug: r.slug, bio: r.bio, imageUrl: r.imageUrl, verified: r.verified, monthlyListeners: r.monthlyListeners, genres: r.genres })),
-    ...local.artists,
-  ].filter((a, i, arr) => arr.findIndex((b) => b.id === a.id) === i);
+  // Real follower / audience numbers + verification for every artist card.
+  const hydratedYT = await hydrateArtists(artistRowsYT, user.id).catch(() => []);
+  const artistsOrdered = [...hydratedYT, ...local.artists]
+    .filter((a, i, arr) => arr.findIndex((b) => b.id === a.id) === i)
+    .sort((a, b) => Number(!!b.verified) - Number(!!a.verified) || (b.followers ?? 0) - (a.followers ?? 0));
   const albumsOrdered = [
     ...albumRowsYT.map((r) => ({ id: r.id, title: r.title, slug: r.slug, artistId: r.artistId, artistName: artistNames.get(r.artistId) ?? "", coverUrl: r.coverUrl, releaseDate: r.releaseDate, type: r.type, totalTracks: r.totalTracks, genres: r.genres, lossless: r.lossless, label: r.label })),
     ...local.albums,

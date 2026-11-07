@@ -523,12 +523,26 @@ export class UniversalPlaybackEngine {
     return el && Number.isFinite(el.currentTime) ? el.currentTime : 0;
   }
 
+  /**
+   * Duration, in order of trust: the media element's real `duration`, then the
+   * value reported by the backend, then the catalog/metadata duration. Using
+   * `||` between sources is what previously produced a timer that ran while the
+   * slider sat still — never fall back when a real value exists.
+   */
   get duration(): number {
-    if (this.kind === "native") return nativePlayback.duration || this.lastDuration;
-    if (this.kind === "youtube") return this.yt?.getDuration() ?? 0;
+    if (this.kind === "native") {
+      const n = nativePlayback.duration;
+      if (Number.isFinite(n) && n > 0) return n;
+      return this.lastDuration;
+    }
+    if (this.kind === "youtube") {
+      const y = this.yt?.getDuration() ?? 0;
+      if (Number.isFinite(y) && y > 0) return y;
+      return this.lastDuration;
+    }
     const el = this.els[this.active];
     const d = el?.duration;
-    if (d && Number.isFinite(d) && d > 0) return d;
+    if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
     return this.lastDuration;
   }
 
