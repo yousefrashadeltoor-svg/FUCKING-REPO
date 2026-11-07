@@ -111,18 +111,28 @@ export function Sidebar() {
         title={t(item.key)}
         aria-label={t(item.key)}
         className={cn(
-          "group relative flex items-center rounded-xl text-[13px] font-semibold transition-all duration-200",
+          "group relative flex items-center rounded-xl text-[13px] font-semibold transition-colors duration-200",
           collapsed ? "h-11 w-11 justify-center" : "gap-3 px-3 py-2",
           active ? "text-white" : "text-[color:var(--app-muted)] hover:text-white",
         )}
       >
+        {/* Active marker: a slim accent bar + soft glow instead of a faded box
+            behind the icon (readability first, in every theme). */}
         {active && (
           <motion.span
             layoutId="nav-pill"
             transition={{ type: "spring", stiffness: 420, damping: 34 }}
-            className="absolute inset-0 -z-10 rounded-xl bg-white/[0.09] ring-1 ring-white/10"
+            className="absolute inset-y-1 start-0 -z-10 w-[3px] rounded-full bg-[var(--app-accent)] shadow-[0_0_14px_var(--dynamic-glow)]"
           />
         )}
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-0 -z-20 rounded-xl opacity-0 transition-opacity duration-200",
+            "bg-[radial-gradient(80%_120%_at_0%_50%,var(--dynamic-glow),transparent_70%)]",
+            active ? "opacity-100" : "group-hover:opacity-60",
+          )}
+        />
         <Icon className={cn("size-[19px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? item.tone : "opacity-80 group-hover:opacity-100")} />
         {!collapsed && <span className="truncate">{t(item.key)}</span>}
         {collapsed && (

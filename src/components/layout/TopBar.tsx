@@ -245,21 +245,29 @@ export function TopBar() {
         >
           <Activity className="size-4" />
         </Link>
-        <div className="hidden items-center gap-2.5 rounded-full border border-[var(--app-border)] bg-white/[0.05] py-1.5 pe-3.5 ps-1.5 sm:flex">
-          {user?.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={user.avatarUrl} alt={user.name} className="size-7 rounded-full object-cover" />
-          ) : (
-            <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-[var(--app-accent)] to-cyan-400 text-[11px] font-black text-black">
-              {(user?.name ?? "D")[0]}
-            </span>
-          )}
+        {/* The user chip: an elegant gold-on-obsidian plate instead of the flat
+            translucent box the user complained about. */}
+        <div className="user-plate hidden items-center gap-2.5 py-1.5 pe-3.5 ps-1.5 sm:flex">
+          <span className="relative grid place-items-center">
+            {user?.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.avatarUrl}
+                alt={user.name}
+                className="size-7 rounded-full object-cover ring-1 ring-[#d4af37]/60"
+              />
+            ) : (
+              <span className="grid size-7 place-items-center rounded-full bg-[linear-gradient(140deg,#F6E7A8,#D4AF37_45%,#8C6B14)] text-[11px] font-black text-[#1a1405] shadow-[0_2px_10px_-2px_rgba(212,175,55,0.8)]">
+                {(user?.name ?? "D")[0]}
+              </span>
+            )}
+          </span>
           <div className="leading-tight">
             <p className="flex items-center gap-1 text-[12.5px] font-semibold">
-              {user?.name ?? "Listener"}
-              {user?.tier === "ultimate" && <BadgeCheck className="size-3.5 text-gold" />}
+              <span className="gold-text">{user?.name ?? "Listener"}</span>
+              {user?.tier === "ultimate" && <BadgeCheck className="size-3.5 text-[#d4af37]" />}
             </p>
-            <p className="text-[9.5px] font-medium uppercase tracking-wider text-gold/90">
+            <p className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-[#d4af37]/75">
               DON MUSE · {user?.tier ?? "free"}
             </p>
           </div>

@@ -87,12 +87,79 @@
   --surface-soft: rgba(12, 14, 20, 0.035);
 }
 
-[data-theme="royal"] { --app-bg: #0a0714; --app-panel: rgba(212, 175, 55, 0.07); --app-border: rgba(212, 175, 55, 0.22); --app-text: #fbf6e6; }
-[data-theme="emerald"] { --app-bg: #05100c; --app-panel: rgba(29, 185, 84, 0.07); --surface-soft: rgba(29, 185, 84, 0.05); }
-[data-theme="sand"] { --app-bg: #14100a; --app-panel: rgba(255, 214, 153, 0.07); --app-border: rgba(255, 214, 153, 0.20); }
-[data-theme="rosegold"] { --app-bg: #120a0d; --app-panel: rgba(255, 170, 190, 0.07); --app-border: rgba(255, 170, 190, 0.20); }
-[data-theme="ocean"] { --app-bg: #04101a; --app-panel: rgba(0, 212, 255, 0.07); --app-border: rgba(0, 212, 255, 0.20); }
-[data-theme="obsidian"] { --app-bg: #000000; }
+/* Every theme declares the full token set so text contrast never depends on
+   what the previous theme left behind (this was the "unreadable in some
+   themes" bug). */
+[data-theme="royal"] {
+  --app-bg: #0a0714;
+  --app-panel: rgba(212, 175, 55, 0.07);
+  --app-panel-solid: rgba(18, 13, 28, 0.94);
+  --app-text: #fbf6e6;
+  --app-muted: rgba(251, 246, 230, 0.66);
+  --app-border: rgba(212, 175, 55, 0.22);
+  --surface-strong: rgba(212, 175, 55, 0.14);
+  --surface-soft: rgba(212, 175, 55, 0.06);
+}
+[data-theme="emerald"] {
+  --app-bg: #05100c;
+  --app-panel: rgba(29, 185, 84, 0.07);
+  --app-panel-solid: rgba(6, 18, 13, 0.94);
+  --app-text: #eefaf2;
+  --app-muted: rgba(238, 250, 242, 0.64);
+  --app-border: rgba(29, 185, 84, 0.20);
+  --surface-strong: rgba(29, 185, 84, 0.13);
+  --surface-soft: rgba(29, 185, 84, 0.05);
+}
+[data-theme="sand"] {
+  --app-bg: #14100a;
+  --app-panel: rgba(255, 214, 153, 0.07);
+  --app-panel-solid: rgba(24, 18, 11, 0.94);
+  --app-text: #fdf4e6;
+  --app-muted: rgba(253, 244, 230, 0.64);
+  --app-border: rgba(255, 214, 153, 0.20);
+  --surface-strong: rgba(255, 214, 153, 0.13);
+  --surface-soft: rgba(255, 214, 153, 0.05);
+}
+[data-theme="rosegold"] {
+  --app-bg: #120a0d;
+  --app-panel: rgba(255, 170, 190, 0.07);
+  --app-panel-solid: rgba(22, 11, 15, 0.94);
+  --app-text: #fdeef2;
+  --app-muted: rgba(253, 238, 242, 0.65);
+  --app-border: rgba(255, 170, 190, 0.20);
+  --surface-strong: rgba(255, 170, 190, 0.13);
+  --surface-soft: rgba(255, 170, 190, 0.05);
+}
+[data-theme="ocean"] {
+  --app-bg: #04101a;
+  --app-panel: rgba(0, 212, 255, 0.07);
+  --app-panel-solid: rgba(5, 17, 26, 0.94);
+  --app-text: #eaf8ff;
+  --app-muted: rgba(234, 248, 255, 0.64);
+  --app-border: rgba(0, 212, 255, 0.20);
+  --surface-strong: rgba(0, 212, 255, 0.13);
+  --surface-soft: rgba(0, 212, 255, 0.05);
+}
+[data-theme="obsidian"] {
+  --app-bg: #000000;
+  --app-panel: rgba(255, 255, 255, 0.05);
+  --app-panel-solid: rgba(8, 8, 10, 0.95);
+  --app-text: #ffffff;
+  --app-muted: rgba(255, 255, 255, 0.66);
+  --app-border: rgba(255, 255, 255, 0.12);
+  --surface-strong: rgba(255, 255, 255, 0.10);
+  --surface-soft: rgba(255, 255, 255, 0.04);
+}
+[data-theme="midnight"] {
+  --app-bg: #05060a;
+  --app-panel: rgba(255, 255, 255, 0.045);
+  --app-panel-solid: rgba(14, 15, 20, 0.92);
+  --app-text: #f6f7fb;
+  --app-muted: rgba(246, 247, 251, 0.62);
+  --app-border: rgba(255, 255, 255, 0.10);
+  --surface-strong: rgba(255, 255, 255, 0.09);
+  --surface-soft: rgba(255, 255, 255, 0.035);
+}
 
 [data-density="compact"] {
   --density-card-w: 8.75rem;
@@ -132,7 +199,10 @@ body {
 /* ------------------------------ glass system ----------------------------- */
 
 .glass-panel {
-  background: var(--app-panel);
+  /* Solid-ish base under the blur: light themes need it or text over the page
+     background loses contrast. */
+  background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+  background-image: linear-gradient(var(--app-panel), var(--app-panel));
   backdrop-filter: blur(32px) saturate(170%);
   -webkit-backdrop-filter: blur(32px) saturate(170%);
   border: 1px solid var(--app-border);
@@ -149,6 +219,7 @@ body {
 
 .glass-modal {
   background: var(--app-panel-solid);
+  color-scheme: inherit;
   backdrop-filter: blur(60px) saturate(190%);
   -webkit-backdrop-filter: blur(60px) saturate(190%);
   border: 1px solid var(--app-border);
@@ -299,6 +370,34 @@ input[type="range"].aura-eq::-moz-range-thumb {
   background-clip: text;
   color: transparent;
 }
+
+/* ------------------------ luxury user plate ------------------------------- */
+/* Replaces the plain translucent box behind the user name. A brushed-gold
+   hairline over an obsidian gradient, with a soft specular sweep on hover. */
+.user-plate {
+  position: relative;
+  display: flex;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(20, 17, 10, 0.92), rgba(8, 8, 12, 0.92)) padding-box,
+    linear-gradient(120deg, rgba(212, 175, 55, 0.75), rgba(212, 175, 55, 0.12) 35%, rgba(255, 246, 216, 0.55) 60%, rgba(184, 145, 44, 0.18)) border-box;
+  box-shadow:
+    0 1px 0 rgba(255, 246, 216, 0.14) inset,
+    0 14px 34px -22px rgba(212, 175, 55, 0.65);
+  overflow: hidden;
+  isolation: isolate;
+}
+.user-plate::after {
+  content: "";
+  position: absolute;
+  inset: -40% -10%;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 246, 216, 0.16) 48%, transparent 62%);
+  transform: translateX(-120%);
+  transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.user-plate:hover::after { transform: translateX(120%); }
 
 .card-hover {
   transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), background 0.25s ease, box-shadow 0.34s ease;
