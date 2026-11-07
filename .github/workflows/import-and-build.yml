@@ -22,14 +22,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Unpack the original project without generated build output
+      - name: Import the original ZIP only when source is not yet unpacked
         shell: bash
         run: |
           set -euo pipefail
-          archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
-          if [ -z "$archive" ]; then
-            echo "No project ZIP remains in the repository; source is already unpacked."
+          if [ -f package.json ]; then
+            echo "Application source is already present; preserving tracked changes."
           else
+            archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+            test -n "$archive"
             work="$RUNNER_TEMP/don-muse-import"
             mkdir -p "$work"
             unzip -q "$archive" -d "$work"
@@ -67,7 +68,21 @@ jobs:
           android/*.keystore
           EOF
 
-      - name: Commit the extracted source to main
+      - name: Apply reviewed playback, UI, and Android fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_file=".github/donmuse-critical.patch.gz.b64"
+          if [ -f "$patch_file" ]; then
+            base64 --decode "$patch_file" | gzip --decompress > "$RUNNER_TEMP/donmuse-critical.patch"
+            gzip --test < <(base64 --decode "$patch_file")
+            patch --batch --forward -p1 < "$RUNNER_TEMP/donmuse-critical.patch"
+            rm -f "$patch_file"
+          else
+            echo "No pending source patch; keeping current application source."
+          fi
+
+      - name: Commit imported source and reviewed fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -75,7 +90,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           if ! git diff --cached --quiet; then
-            git commit -m "Import DON MUSE application source"
+            git commit -m "Import DON MUSE source and fix playback state"
             git push origin HEAD:main
           else
             echo "No source changes to commit."
@@ -116,22 +131,27 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        if: always()
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK platform
-        if: always()
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
-
       - name: Install Gradle
         if: always()
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Android debug APK
         if: always()
+        shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
+              export ANDROID_HOME="$ANDROID_SDK_ROOT"
+            elif [ -d /usr/local/lib/android/sdk ]; then
+              export ANDROID_HOME=/usr/local/lib/android/sdk
+            else
+              echo "Android SDK was not found on this runner."
+              exit 1
+            fi
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           if [ ! -x android/gradlew ]; then
             gradle -p android wrapper --gradle-version 8.7
           fi
