@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: don-muse-main-build
+  group: don-muse-main-build-v2
   cancel-in-progress: false
 
 jobs:
