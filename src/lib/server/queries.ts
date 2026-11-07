@@ -15,6 +15,7 @@ import {
   users,
 } from "@/db/schema";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { ensureSessionUser, getCurrentUser } from "@/lib/server/session";
 import type {
   AlbumDTO,
   ArtistDTO,
@@ -176,31 +177,32 @@ function toTrackDTO(
 /* ------------------------------ helpers ------------------------------ */
 
 /** The demo user that owns the seeded library. */
+/**
+ * The current listener.
+ *
+ * Kept under the old name so every existing call site automatically becomes
+ * per-user, but it is no longer a shared throw-away account: `ensureSessionUser`
+ * resolves the signed session cookie to its own `users` row, so two visitors
+ * never see each other's playlists, likes, follows or history.
+ */
 export async function getDemoUser(): Promise<UserDTO> {
-  await ensureSchema();
-  const rows = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, "demo@aura.fm"))
+  return ensureSessionUser();
+}
+
+/** Read-only variant for server components that must not set cookies. */
+export async function getViewer(): Promise<UserDTO> {
+  return getCurrentUser();
+}
+
+/** Guard for mutations: throws a 404 when the resource is not owned. */
+export async function assertPlaylistOwner(playlistId: number, userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ ownerId: playlists.ownerId, isPublic: playlists.isPublic })
+    .from(playlists)
+    .where(eq(playlists.id, playlistId))
     .limit(1);
-  const row = rows[0];
-  if (!row) {
-    const [created] = await db
-      .insert(users)
-      .values({ email: "demo@aura.fm", name: "DON MUSE Listener", avatarUrl: "/logo.svg", tier: "ultimate" })
-      .onConflictDoNothing()
-      .returning();
-    const u = created ?? (await db.select().from(users).where(eq(users.email, "demo@aura.fm")).limit(1))[0];
-    return { id: u.id, email: u.email, name: u.name, avatarUrl: u.avatarUrl, tier: u.tier as UserDTO["tier"], locale: u.locale };
-  }
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    avatarUrl: row.avatarUrl,
-    tier: row.tier as UserDTO["tier"],
-    locale: row.locale,
-  };
+  if (!row) return false;
+  return row.ownerId === userId || row.isPublic;
 }
 
 async function artistNameMap(ids: number[]): Promise<Map<number, string>> {

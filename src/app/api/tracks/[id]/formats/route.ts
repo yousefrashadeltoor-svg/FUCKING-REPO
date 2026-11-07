@@ -5,6 +5,7 @@ import { extractInfo, type YtFormat } from "@/lib/server/ytdlp";
 import { AUDIO_PRESETS, estimateSize } from "@/lib/server/transcode";
 import { resolveSource } from "@/lib/server/resolve-source";
 import type { DownloadFormatDTO } from "@/lib/types";
+import { canDownload, externalFallback, policyFor } from "@/lib/playback-policy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -44,6 +45,20 @@ export async function GET(_req: Request, ctx: Ctx) {
   const album = row.albumId
     ? (await db.select({ coverUrl: albums.coverUrl }).from(albums).where(eq(albums.id, row.albumId)).limit(1))[0]
     : null;
+
+  // Policy first: a source that does not permit downloading never reaches an
+  // extractor, so we cannot accidentally offer a blocked format.
+  if (!canDownload(row.source)) {
+    const policy = policyFor(row.source);
+    return Response.json({
+      video: [],
+      audio: [],
+      formats: [],
+      allowed: false,
+      note: policy.note,
+      external: externalFallback(row.source, row.sourceId),
+    });
+  }
 
   let duration = row.durationSec;
   const video: DownloadFormatDTO[] = [];

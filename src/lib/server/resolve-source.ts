@@ -1,8 +1,11 @@
 // Resolve any catalog track to a playable/downloadable source.
-// Returns either a yt-dlp page URL (YouTube / SoundCloud / Bandcamp / Dailymotion)
-// or a direct media URL (Audius / Archive / Jamendo / Odysee / legacy).
+// Returns either a yt-dlp page URL (SoundCloud / Bandcamp / Dailymotion — the
+// providers whose terms allow it) or a direct media URL (Audius / Archive /
+// Jamendo / Odysee / Deezer preview / legacy).
+//
+// YouTube and YouTube Music are intentionally NOT resolvable here: they play in
+// the official IFrame player only (see src/lib/playback-policy.ts).
 import { archiveFileUrl, audiusStreamUrl, dailymotionUrl, jamendoStreamUrl, odyseeStreamUrl, soundcloudUrl } from "./platforms";
-import { matchOnYouTube } from "./majors";
 import { db } from "@/db";
 import { tracks } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -11,23 +14,19 @@ export type Resolved = { kind: "ytdlp"; url: string; youtube: boolean } | { kind
 
 export async function resolveSource(source: string, sourceId: string | null, sourceUrl: string | null, meta?: { trackId?: number; title?: string; artist?: string; durationSec?: number }): Promise<Resolved> {
   if (!sourceId && !sourceUrl) return null;
-  // Major catalogs (Spotify / Apple Music / Deezer): full-length via the matching
-  // YouTube Music video; the official 30s preview is the fallback.
+  // Major catalogs (Spotify / Apple Music / Deezer) expose an official preview
+  // file; the full song is reached through the official YouTube Music player in
+  // the UI (never by extracting YouTube audio).
   if (source === "spotify" || source === "applemusic" || source === "deezer") {
-    let vid: string | null = null;
-    if (meta?.title && meta.artist) {
-      vid = await matchOnYouTube(meta.title, meta.artist, meta.durationSec ?? 0);
-      // persist the match so playback can use the YouTube player next time
-      if (vid && meta.trackId) {
-        await db.update(tracks).set({ previewUrl: sourceUrl }).where(eq(tracks.id, meta.trackId)).catch(() => {});
-      }
+    if (meta?.trackId && sourceUrl) {
+      await db.update(tracks).set({ previewUrl: sourceUrl }).where(eq(tracks.id, meta.trackId)).catch(() => {});
     }
-    if (vid) return { kind: "ytdlp", url: `https://www.youtube.com/watch?v=${vid}`, youtube: true };
     return sourceUrl ? { kind: "direct", url: sourceUrl } : null;
   }
   switch (source) {
+    // Policy: YouTube content is official-embed only — no extractor, ever.
     case "youtube":
-      return sourceId ? { kind: "ytdlp", url: `https://www.youtube.com/watch?v=${sourceId}`, youtube: true } : null;
+      return null;
     case "soundcloud":
       return sourceId ? { kind: "ytdlp", url: soundcloudUrl(sourceId), youtube: false } : null;
     case "bandcamp":

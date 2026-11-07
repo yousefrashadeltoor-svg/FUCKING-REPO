@@ -27,6 +27,7 @@ import type { TrackDTO } from "@/lib/types";
 import { YouTubeBridge } from "./youtube-bridge";
 import { nativePlayback } from "@/lib/platform/native";
 import { apiUrl } from "@/lib/api-base";
+import { policyFor } from "@/lib/playback-policy";
 import { usePlayerStore } from "@/stores/player-store";
 
 /**
@@ -371,7 +372,19 @@ export class UniversalPlaybackEngine {
     this.lastEmittedPos = -1;
     this.emit("trackchange", track);
 
-    const useYouTube = track.source === "youtube" && track.codec === "iframe" && !!track.sourceId;
+    // ---- source policy decides the backend (single source of truth) --------
+    // YouTube / YouTube Music *must* use the official IFrame player: never a
+    // proxy, never an extracted URL, never background audio.
+    const policy = policyFor(track.source);
+    const useYouTube =
+      policy.mode === "official-embed" && !!track.sourceId && track.source === "youtube";
+    if (policy.mode === "link-out") {
+      // Nothing can be played in-app for this provider — stop cleanly and let
+      // the UI offer the external link instead of pretending to play.
+      this.stop();
+      this.emit("error", `${policy.note}`);
+      return;
+    }
     const useNative = !useYouTube && nativePlayback.canHandle(track);
 
     if (useNative) {

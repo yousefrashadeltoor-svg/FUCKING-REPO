@@ -242,9 +242,26 @@ class NativeBridge(
         }
     }
 
+    /** Explicit toggle — used by UI buttons that only know "play/pause". */
     @JavascriptInterface
     fun playPause(): String {
         NativePlayer.toggle(); WidgetUpdater.refresh(activity); return "ok"
+    }
+
+    /**
+     * Idempotent play. The web engine calls this for absolute intent, so a late
+     * `pause()` can never invert it into a pause (the old toggle-only bridge did
+     * exactly that and left the UI out of sync with the service).
+     */
+    @JavascriptInterface
+    fun play(): String {
+        NativePlayer.play(); WidgetUpdater.refresh(activity); return "ok"
+    }
+
+    /** Idempotent pause. */
+    @JavascriptInterface
+    fun pause(): String {
+        NativePlayer.pause(); WidgetUpdater.refresh(activity); return "ok"
     }
 
     @JavascriptInterface
@@ -277,9 +294,14 @@ class NativeBridge(
         return "ok"
     }
 
+    /**
+     * Register a JS function that receives real download progress:
+     *   { id, filename, status: "queued"|"running"|"done"|"error", bytes, total, error? }
+     * The callback is invoked from the download manager thread on the UI thread.
+     */
     @JavascriptInterface
     fun setDownloadCallback(name: String): String {
-        NativeEvents.emit("__donmuseDownloadAck", name)
+        NativeEvents.addDownloadCallback(name)
         return "ok"
     }
 
@@ -296,9 +318,13 @@ class NativeBridge(
 
     @JavascriptInterface
     fun cancelDownload(id: String): String {
-        repo.cancel(Long.parseLong(id))
+        repo.cancel(id.toLongOrNull() ?: return JSONObject().put("error", "bad id").toString())
         return "ok"
     }
+
+    /** Live status of one transfer, for UIs that prefer polling over callbacks. */
+    @JavascriptInterface
+    fun downloadStatus(id: String): String = repo.status(id.toLongOrNull() ?: -1L)
 
     /* -------------------------------- misc ---------------------------------- */
 

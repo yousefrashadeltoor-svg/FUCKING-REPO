@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { playlistTracks, tracks } from "@/db/schema";
+import { playlistTracks, playlists, tracks } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { getDemoUser, getPlaylistDetail } from "@/lib/server/queries";
+import { ensureSessionUser } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+  const owner = await ensureSessionUser();
+  const [pl] = await db.select({ ownerId: playlists.ownerId }).from(playlists).where(eq(playlists.id, pid)).limit(1);
+  if (!pl) return Response.json({ error: "Playlist not found" }, { status: 404 });
+  if (pl.ownerId !== owner.id) return Response.json({ error: "Not your playlist" }, { status: 403 });
   if (!body.trackId || !Number.isInteger(body.trackId)) {
     return Response.json({ error: "trackId is required" }, { status: 400 });
   }
@@ -50,6 +55,10 @@ export async function DELETE(req: NextRequest, ctx: Ctx) {
   if (pid === null || !Number.isInteger(trackId)) {
     return Response.json({ error: "Invalid ids" }, { status: 400 });
   }
+  const owner = await ensureSessionUser();
+  const [pl] = await db.select({ ownerId: playlists.ownerId }).from(playlists).where(eq(playlists.id, pid)).limit(1);
+  if (!pl) return Response.json({ error: "Playlist not found" }, { status: 404 });
+  if (pl.ownerId !== owner.id) return Response.json({ error: "Not your playlist" }, { status: 403 });
   await db
     .delete(playlistTracks)
     .where(and(eq(playlistTracks.playlistId, pid), eq(playlistTracks.trackId, trackId)));

@@ -31,6 +31,9 @@ interface FormatsResponse {
   video: DownloadFormatDTO[];
   audio: DownloadFormatDTO[];
   error?: string;
+  /** source policy: downloading not permitted for this provider */
+  allowed?: boolean;
+  external?: string | null;
 }
 
 type Tab = "formats" | "clip" | "page";
@@ -96,8 +99,12 @@ export function DownloadMenu({ track, onClose, initialTab = "formats", onEvent }
       .then(async (r) => {
         const body = (await r.json()) as FormatsResponse;
         if (ctrl.signal.aborted) return;
-        if (!r.ok) setError(body.error ?? "Download failed");
-        else {
+        if (!r.ok || body.allowed === false) {
+          // Source policy (or a real failure): explain it and offer the official
+          // page instead of showing an empty, broken list.
+          setError(body.error ?? body.note ?? "Download failed");
+          if (body.note || body.external) setData(body);
+        } else {
           setData(body);
           if (body.audio.length === 0 && body.video.length > 0) setKind("video");
         }
@@ -204,7 +211,22 @@ export function DownloadMenu({ track, onClose, initialTab = "formats", onEvent }
             </div>
           )}
           {loading && <div className="flex items-center gap-2 px-3 py-8 text-sm text-white/50"><Loader2 className="size-4 animate-spin" /> {t("dlFetching")}</div>}
-          {error && !loading && <div className="mx-1 mb-2 flex items-start gap-2 rounded-xl bg-amber/10 px-3 py-2.5 text-xs text-amber"><AlertTriangle className="mt-0.5 size-4 shrink-0" /><span>{error}</span></div>}
+          {error && !loading && (
+            <div className="mx-1 mb-2 flex items-start gap-2 rounded-xl bg-amber/10 px-3 py-2.5 text-xs text-amber">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span className="flex-1">{error}</span>
+              {data?.external && (
+                <a
+                  href={data.external}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex shrink-0 items-center gap-1 rounded-full bg-black/30 px-2.5 py-1 font-bold"
+                >
+                  <ExternalLink className="size-3" /> {t("source")}
+                </a>
+              )}
+            </div>
+          )}
           {data?.note && !loading && <div className="mx-1 mb-2 flex items-start gap-2 rounded-xl bg-white/5 px-3 py-2 text-[11px] text-white/55"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" /><span>{data.note}</span></div>}
           {data && !loading && (
             <div className="aura-scroll max-h-[380px] overflow-y-auto">
