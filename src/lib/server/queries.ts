@@ -187,7 +187,7 @@ export async function getDemoUser(): Promise<UserDTO> {
   if (!row) {
     const [created] = await db
       .insert(users)
-      .values({ email: "demo@aura.fm", name: "DON MUSE Listener", avatarUrl: "/logo.png", tier: "ultimate" })
+      .values({ email: "demo@aura.fm", name: "DON MUSE Listener", avatarUrl: "/logo.svg", tier: "ultimate" })
       .onConflictDoNothing()
       .returning();
     const u = created ?? (await db.select().from(users).where(eq(users.email, "demo@aura.fm")).limit(1))[0];

@@ -93,24 +93,43 @@ export async function searchYouTubeMusic(query: string, limit = 24): Promise<Ext
 
 /** Trending on YouTube Music — search a few evergreen queries and merge. */
 export async function youtubeTrending(limit = 24): Promise<ExternalTrack[]> {
-  const queries = ["top hits 2025", "trending songs", "viral hits", "popular music"];
-  const results = await Promise.allSettled(
-    queries.map((q) => searchYouTubeMusic(q, 10)),
-  );
-  const merged: ExternalTrack[] = [];
-  const seen = new Set<string>();
+  // Requirement: the home page and its recommendations must change on every
+  // refresh. Instead of one fixed query set we draw a random slice from a pool
+  // of REAL chart queries (YouTube Music search) and shuffle the merged result,
+  // so two consecutive loads never show the same row.
+  const pool = [
+    "top hits 2025", "trending songs", "viral hits", "popular music",
+    "أغاني 2025", "طرب مصري", "عمرو دياب", "شيرين عبد الوهاب", "محمد رمضان",
+    "new arabic songs", "بيتس عربي", "كايروكي", "مسار إجباري", "تامر حسني",
+    "hip hop 2025", "afrobeats hits", "amapiano 2025", "k-pop hits",
+    "indie pop 2025", "classic rock", "lo-fi beats", "workout music",
+    "romantic songs", "wedding songs", "music 2025 mix",
+  ];
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const queries = shuffled.slice(0, 4);
+  const results = await Promise.allSettled(queries.map((q) => searchYouTubeMusic(q, 10)));
+  const perQuery: ExternalTrack[][] = [];
   for (const r of results) {
     if (r.status !== "fulfilled") continue;
-    for (const t of r.value) {
-      if (seen.has(t.sourceId)) continue;
+    const fresh = r.value.filter((t) => !!t.sourceId);
+    if (fresh.length) perQuery.push([...fresh].sort(() => Math.random() - 0.5));
+  }
+  // Round-robin so every query contributes instead of the first one dominating.
+  const merged: ExternalTrack[] = [];
+  const seen = new Set<string>();
+  let round = 0;
+  while (merged.length < limit && perQuery.some((list) => list.length > round)) {
+    for (const list of perQuery) {
+      const t = list[round];
+      if (!t || seen.has(t.sourceId)) continue;
       seen.add(t.sourceId);
       merged.push(t);
-      if (merged.length >= limit) return merged;
+      if (merged.length >= limit) break;
     }
+    round++;
   }
   return merged;
 }
-
 
 /* ------------------------ artists & albums (real images) ------------------------ */
 

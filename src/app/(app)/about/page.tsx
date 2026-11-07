@@ -23,13 +23,24 @@ export default function AboutPage() {
     <div className="mx-auto max-w-4xl p-4 md:p-6">
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/developer.jpg" alt="Developer" className="aspect-[4/3] w-full object-cover sm:aspect-[16/9]" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/developer.jpg"
+          alt="Joseph M.R"
+          className="aspect-[4/3] w-full object-cover sm:aspect-[16/9]"
+          onError={(e) => {
+            // Never leave a broken image frame: fall back to the brand gradient.
+            const el = e.currentTarget;
+            el.style.display = "none";
+            el.parentElement?.classList.add("h-52", "bg-[radial-gradient(120%_120%_at_0%_0%,rgba(212,175,55,0.35),transparent_60%),radial-gradient(120%_120%_at_100%_0%,rgba(29,185,84,0.28),transparent_60%)]");
+          }}
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-6 sm:p-8">
           <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-gold">{t("developer")}</p>
           <h1 className="mt-1 text-4xl font-black tracking-tight sm:text-6xl" style={{ textShadow: "0 4px 30px rgba(0,0,0,.8)" }}>Joseph M.R</h1>
           <p className="mt-2 max-w-xl text-sm text-white/75 sm:text-base">{t("developerSub")} <b className="text-white">Joseph M.R</b>.</p>
-          <p className="mt-3 inline-block rounded-full border border-gold/40 bg-black/50 px-4 py-1.5 font-serif text-sm italic text-gold backdrop-blur">{t("developerQuote")}</p>
+          <p className="mt-3 inline-block rounded-full border border-gold/40 bg-black/50 px-4 py-1.5 font-mono text-xs text-gold backdrop-blur">DON MUSE · {t("version")} 2.0 · Android + Web</p>
         </div>
       </motion.div>
 
@@ -54,7 +65,7 @@ export default function AboutPage() {
           <div className="glass-panel rounded-2xl p-5">
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="DON MUSE" className="size-14 rounded-2xl shadow-lg" />
+              <img src="/logo.svg" alt="DON MUSE" className="size-14 rounded-2xl shadow-lg" />
               <div>
                 <p className="text-lg font-black tracking-tight">DON MUSE</p>
                 <p className="font-mono text-[11px] text-white/40">{t("version")} 4.0 · {new Date().getFullYear()}</p>

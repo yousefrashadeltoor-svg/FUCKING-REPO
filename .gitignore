@@ -1,16 +1,19 @@
 node_modules/
 .next/
+out/
 dist/
-coverage/
-.cache/
-/data/
-.env
-.env.*
-!.env.example
-!.env.sample
-!.env.template
+data/
+.env*.local
+tsconfig.tsbuildinfo
+*.zip
+
+# android build artefacts
 android/.gradle/
-android/local.properties
 android/app/build/
-android/*.jks
-android/*.keystore
+android/build/
+android/local.properties
+android/.idea/
+android/app/*.jks
+
+# bundled web UI inside the APK (generated at build time)
+android/app/src/main/assets/www/

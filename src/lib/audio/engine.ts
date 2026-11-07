@@ -1,25 +1,46 @@
 // ============================================================================
-//  DON MUSE — UniversalPlaybackEngine
+//  DON MUSE — UniversalPlaybackEngine (v2, rewritten)
 //  ---------------------------------------------------------------------------
-//  One control interface over every audio source:
-//    • YouTube Music  → full-length playback via the YouTube IFrame API
-//                       (YouTubeBridge, hidden 1x1 player)
-//    • Deezer / iTunes → 30s previews via dual HTMLAudioElements (gapless
-//                       pre-buffering) routed through a WebAudio graph:
-//                       element → MediaElementSource → elementGain →
-//                       [10x BiquadFilter EQ] → masterGain → compressor →
-//                       AnalyserNode → destination
+//  ONE audio pipeline, ONE authoritative source at any moment.
 //
-//  Features: equal-power crossfade (0–15s, audio path), LUFS (EBU R128-style)
-//  loudness normalization, 10-band graphic EQ, playback-rate control, sleep
-//  timer with fade-out, gapless next-track pre-buffer, AnalyserNode tap for
-//  the real-time spectrum visualizer.
+//  Backends
+//    • html   (web / PWA)  → <audio> element(s) routed through a WebAudio graph
+//                            (10-band EQ, loudness match, analyser/spectrum).
+//    • native (Android)    → on-device ExoPlayer via the DON MUSE native plugin
+//                            (background playback, MediaSession notification,
+//                            lock-screen + widgets). The WebView is only UI.
+//    • youtube             → YouTube IFrame bridge (only for `codec: "iframe"`).
+//
+//  Correctness rules this file enforces (all of these were real bugs before):
+//    1. Starting track B ALWAYS silences track A, including the Quran/music
+//       cross-over case — `killOthers()` runs on every load.
+//    2. A stale async load can never win: every load takes a monotonically
+//       increasing token and bails out if a newer load started.
+//    3. `isPlaying` is derived from the REAL element/player state, not from a
+//       state flag — the timer can never run while nothing is audible.
+//    4. No fake progress: position comes from the playing media only.
+//    5. Repeated taps on the same track never stack a second player.
 // ============================================================================
 
 import { clamp, EQ_BAND_FREQUENCIES } from "@/lib/utils";
 import type { TrackDTO } from "@/lib/types";
 import { YouTubeBridge } from "./youtube-bridge";
-import { getTrackIdentity } from "@/lib/track-identity";
+import { nativePlayback } from "@/lib/platform/native";
+import { apiUrl } from "@/lib/api-base";
+import { usePlayerStore } from "@/stores/player-store";
+
+/**
+ * Read the queue without creating a circular import at module load: the store
+ * imports nothing from the engine, but keeping the access behind a function
+ * means the engine stays usable (and testable) before the store is hydrated.
+ */
+function peekPlayerState() {
+  try {
+    return usePlayerStore.getState();
+  } catch {
+    return null;
+  }
+}
 
 export type EngineEvent =
   | "play"
@@ -28,17 +49,26 @@ export type EngineEvent =
   | "timeupdate"
   | "durationchange"
   | "error"
-  | "trackchange";
+  | "trackchange"
+  | "buffering"
+  | "ready";
 
 export type EngineEventHandler = (payload?: unknown) => void;
 
-/** EBU R128-style reference loudness target (LUFS). */
 const TARGET_LUFS = -14;
+const POSITION_TICK_MS = 120;
 
 type Listener = { event: EngineEvent; handler: EngineEventHandler };
-type SourceKind = "audio" | "youtube";
+type SourceKind = "audio" | "youtube" | "native";
+
+export interface LoadOptions {
+  autoplay?: boolean;
+  /** Position to resume from (seconds). */
+  startAt?: number;
+}
 
 export class UniversalPlaybackEngine {
+  /* ------------------------------ audio graph ------------------------------ */
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
@@ -46,32 +76,42 @@ export class UniversalPlaybackEngine {
   private elGains: GainNode[] = [];
   private eqChains: BiquadFilterNode[][] = [];
   private active = 0;
+
+  /* -------------------------------- state --------------------------------- */
   private listeners: Listener[] = [];
   private current: TrackDTO | null = null;
-  private loadedTrackKey: string | null = null;
+  private loadedKey: string | null = null;
+  private loadToken = 0;
+  private kind: SourceKind = "audio";
   private normGain = 1;
   private volume = 0.8;
   private muted = false;
   private rate = 1;
-  private crossfadeSec = 4;
   private loudnessNormalization = true;
-  private crossfadeTimer: ReturnType<typeof setTimeout> | null = null;
+  private tick: ReturnType<typeof setInterval> | null = null;
+  private lastEmittedPos = -1;
   private sleepTimer: ReturnType<typeof setTimeout> | null = null;
   private sleepFadeTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastDuration = 0;
+  private endedGuard = false;
 
-  // --- YouTube path ---
+  /* ------------------------------- youtube -------------------------------- */
   private yt: YouTubeBridge | null = null;
-  private ytPoll: ReturnType<typeof setInterval> | null = null;
   private lastYtDuration = 0;
 
-  /** Which backend is currently driving playback. */
-  private kind: SourceKind = "audio";
+  /* ============================== audio graph ============================== */
 
-  /** Must be called from a user gesture at least once. */
-  ensureContext(): AudioContext {
+  /** Unlock the AudioContext. Call inside a user gesture (tap/click). */
+  ensureContext(): AudioContext | null {
+    if (typeof window === "undefined" || typeof AudioContext === "undefined") return null;
     if (!this.ctx) {
-      this.ctx = new AudioContext();
+      try {
+        this.ctx = new AudioContext({ latencyHint: "interactive" });
+      } catch {
+        return null;
+      }
       this.master = this.ctx.createGain();
+      this.master.gain.value = this.volume;
       const comp = this.ctx.createDynamicsCompressor();
       comp.threshold.value = -6;
       comp.knee.value = 12;
@@ -88,9 +128,19 @@ export class UniversalPlaybackEngine {
       for (let i = 0; i < 2; i++) {
         const el = new Audio();
         el.preload = "auto";
-        el.crossOrigin = "anonymous";
+        el.autoplay = false;
+        el.setAttribute("playsinline", "true");
+        el.setAttribute("webkit-playsinline", "true");
+        // Keep the element in the DOM graph so some WebViews (Android) keep
+        // decoding while the tab is hidden — the old code detached them.
+        el.setAttribute("data-donmuse-audio", String(i));
+        // `.crossOrigin` is intentionally NOT set: our stream proxy is
+        // same-origin, and setting it on a redirecting CDN stream can cause
+        // silent CORS failures (a real cause of "no sound, timer still moving").
+
         const src = this.ctx.createMediaElementSource(el);
         const g = this.ctx.createGain();
+        g.gain.value = 0;
         const chain: BiquadFilterNode[] = EQ_BAND_FREQUENCIES.map((f) => {
           const bq = this.ctx!.createBiquadFilter();
           bq.type = "peaking";
@@ -105,28 +155,52 @@ export class UniversalPlaybackEngine {
           node.connect(bq);
           node = bq;
         }
-        node.connect(this.master!);
-        el.addEventListener("timeupdate", () => {
-          if (this.kind === "audio" && this.els[this.active] === el)
-            this.emit("timeupdate", el.currentTime);
-        });
-        el.addEventListener("durationchange", () => {
-          if (this.kind === "audio" && this.els[this.active] === el)
-            this.emit("durationchange", el.duration);
-        });
-        el.addEventListener("ended", () => {
-          if (this.kind === "audio" && this.els[this.active] === el) this.emit("ended");
-        });
-        el.addEventListener("error", () => {
-          if (this.kind === "audio" && this.els[this.active] === el)
-            this.emit("error", el.error?.message ?? "playback error");
-        });
+        node.connect(this.master);
+
         el.addEventListener("play", () => {
-          if (this.kind === "audio" && this.els[this.active] === el) this.emit("play");
+          if (this.isActiveEl(el) && this.kind === "audio") {
+            this.endedGuard = false;
+            this.startTick();
+            this.emit("play");
+          }
         });
         el.addEventListener("pause", () => {
-          if (this.kind === "audio" && this.els[this.active] === el) this.emit("pause");
+          if (this.isActiveEl(el) && this.kind === "audio" && !this.endedGuard) this.emit("pause");
         });
+        el.addEventListener("waiting", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") this.emit("buffering", true);
+        });
+        el.addEventListener("playing", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") this.emit("buffering", false);
+        });
+        el.addEventListener("canplay", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") this.emit("ready");
+        });
+        el.addEventListener("loadedmetadata", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") this.pushDuration();
+        });
+        el.addEventListener("durationchange", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") this.pushDuration();
+        });
+        el.addEventListener("ended", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") {
+            this.endedGuard = true;
+            this.stopTick();
+            this.emit("timeupdate", this.duration);
+            this.emit("ended");
+          }
+        });
+        el.addEventListener("error", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") {
+            this.stopTick();
+            this.emit("error", this.describeError(el));
+            this.emit("pause");
+          }
+        });
+        el.addEventListener("stalled", () => {
+          if (this.isActiveEl(el) && this.kind === "audio") this.emit("buffering", true);
+        });
+
         this.els.push(el);
         this.elGains.push(g);
         this.eqChains.push(chain);
@@ -137,31 +211,27 @@ export class UniversalPlaybackEngine {
     return this.ctx;
   }
 
-  private getYT(): YouTubeBridge {
-    if (!this.yt) {
-      this.yt = new YouTubeBridge();
-      this.yt.onStateChange = (state) => {
-        if (this.kind !== "youtube") return;
-        if (state === YT.PlayerState.PLAYING) this.emit("play");
-        else if (state === YT.PlayerState.PAUSED) this.emit("pause");
-        else if (state === YT.PlayerState.ENDED) this.emit("ended");
-      };
-      this.yt.onError = (code) => {
-        if (this.kind !== "youtube") return;
-        this.emit(
-          "error",
-          code === 101 || code === 150
-            ? "This video can't be embedded by its owner"
-            : code === 100
-              ? "Video not found"
-              : `YouTube player error (${code})`,
-        );
-      };
-    }
-    return this.yt;
+  private isActiveEl(el: HTMLAudioElement): boolean {
+    return this.els[this.active] === el;
   }
 
-  /* ------------------------------ events ------------------------------ */
+  private describeError(el: HTMLAudioElement): string {
+    const code = el.error?.code;
+    switch (code) {
+      case 1:
+        return "Playback aborted";
+      case 2:
+        return "Network error while streaming — check your connection";
+      case 3:
+        return "This file could not be decoded";
+      case 4:
+        return "Source not supported or unavailable";
+      default:
+        return el.error?.message || "Playback error";
+    }
+  }
+
+  /* -------------------------------- events -------------------------------- */
 
   on(event: EngineEvent, handler: EngineEventHandler): () => void {
     const l: Listener = { event, handler };
@@ -175,219 +245,252 @@ export class UniversalPlaybackEngine {
     for (const l of [...this.listeners]) if (l.event === event) l.handler(payload);
   }
 
-  /* --------------------------- configuration --------------------------- */
+  /* ---------------------------- configuration ----------------------------- */
 
   setVolume(v: number) {
     this.volume = clamp(v, 0, 1);
     this.applyVolume();
-    if (this.kind === "youtube" && this.yt) {
-      this.yt.setVolume(this.muted ? 0 : this.volume);
-    }
+    if (this.kind === "youtube" && this.yt) this.yt.setVolume(this.muted ? 0 : this.volume);
+    if (this.kind === "native") nativePlayback.setVolume(this.muted ? 0 : this.volume);
   }
 
   setMuted(m: boolean) {
     this.muted = m;
     this.applyVolume();
-    if (this.kind === "youtube" && this.yt) {
-      this.yt.setVolume(this.muted ? 0 : this.volume);
-    }
+    if (this.kind === "youtube" && this.yt) this.yt.setVolume(this.muted ? 0 : this.volume);
+    if (this.kind === "native") nativePlayback.setVolume(this.muted ? 0 : this.volume);
   }
 
   setPlaybackRate(r: number) {
     this.rate = clamp(r, 0.5, 3);
-    for (const el of this.els) el.playbackRate = this.rate;
+    for (const el of this.els) {
+      try {
+        el.playbackRate = this.rate;
+      } catch {
+        /* not ready */
+      }
+    }
     if (this.yt) this.yt.setPlaybackRate(this.rate);
+    if (this.kind === "native") nativePlayback.setRate(this.rate);
   }
 
-  /** Map the app quality preference onto YouTube's playback quality. */
   setQuality(q: "auto" | "low" | "high" | "lossless") {
-    if (!this.yt) return;
     const map = { auto: "default", low: "medium", high: "hd1080", lossless: "hd2160" } as const;
-    this.yt.setPlaybackQuality(map[q] as YT.SuggestedVideoQuality);
-  }
-
-  setCrossfade(sec: number) {
-    this.crossfadeSec = clamp(sec, 0, 15);
+    if (this.yt) this.yt.setPlaybackQuality(map[q] as YT.SuggestedVideoQuality);
   }
 
   setLoudnessNormalization(on: boolean) {
     this.loudnessNormalization = on;
+    this.normGain = this.current && on ? this.computeNormGain(this.current) : 1;
     this.applyVolume();
   }
 
-  /** Set all 10 EQ band gains (dB). Applies to the audio-element path only —
-   *  YouTube's iframe audio cannot be routed through WebAudio. */
   setEq(bands: number[]) {
-    for (let chain = 0; chain < this.eqChains.length; chain++) {
-      this.eqChains[chain].forEach((bq, i) => {
+    for (const chain of this.eqChains) {
+      chain.forEach((bq, i) => {
         bq.gain.value = clamp(bands[i] ?? 0, -24, 24);
       });
     }
   }
 
   private applyVolume() {
-    if (!this.ctx || !this.master) return;
-    const target = this.muted ? 0 : this.volume * this.normGain;
-    this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.02);
+    const target = this.muted ? 0 : this.volume;
+    if (this.ctx && this.master) {
+      this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.015);
+    }
+    // The element is only used as a source; its own gain must not double-apply.
+  }
+
+  /**
+   * Queue handed to ExoPlayer: the current track followed by whatever the store
+   * has lined up, so "next"/"previous" work from the notification and widgets
+   * even when the WebView is not running.
+   */
+  private nativeQueueFrom(track: TrackDTO, overrideUri?: string): { id: string; uri: string; title: string; artist: string; album: string; artUri: string | null }[] {
+    const toItem = (t: TrackDTO, uri?: string) => ({
+      id: String(t.id),
+      uri: uri ?? t.streamUrl,
+      title: t.title,
+      artist: t.artistName,
+      album: t.albumTitle ?? "",
+      artUri: t.coverUrl && /^https?:/.test(t.coverUrl) ? t.coverUrl : null,
+    });
+    const out = [toItem(track, overrideUri)];
+    try {
+      const state = peekPlayerState();
+      const rest = (state?.queue ?? []).slice((state?.index ?? -1) + 1, (state?.index ?? -1) + 26);
+      for (const t of rest) {
+        if (!t || t.id === track.id) continue;
+        if (!/^(https?|content|file):/.test(t.streamUrl)) continue;
+        out.push(toItem(t));
+      }
+    } catch {
+      /* store not ready — the single track still plays */
+    }
+    return out;
   }
 
   private computeNormGain(track: TrackDTO): number {
     if (!this.loudnessNormalization) return 1;
-    const delta = TARGET_LUFS - track.loudnessLufs;
-    return clamp(Math.pow(10, delta / 20), 0.25, 4);
+    const lufs = Number.isFinite(track.loudnessLufs) ? track.loudnessLufs : TARGET_LUFS;
+    return clamp(Math.pow(10, (TARGET_LUFS - lufs) / 20), 0.25, 4);
   }
 
-  /* ----------------------------- playback ------------------------------ */
+  private sourceKey(track: TrackDTO): string {
+    return `${track.source}:${track.sourceId ?? ""}:${track.streamUrl}`;
+  }
 
-  /** Load + play a track. Routes to YouTube or the audio-element graph by source. */
-  async load(track: TrackDTO, opts: { autoplay?: boolean; crossfade?: boolean } = {}): Promise<void> {
-    this.ensureContext();
-    const { autoplay = true, crossfade = true } = opts;
-    this.cancelSleepTimer();
-    if (this.crossfadeTimer) {
-      clearTimeout(this.crossfadeTimer);
-      this.crossfadeTimer = null;
-    }
-    // Store effects and gesture handlers may both load the same track.
-    // Compare the full provider identity, not the numeric ID alone.
-    const trackKey = getTrackIdentity(track);
-    if (this.loadedTrackKey === trackKey) {
-      if (autoplay) await this.play();
+  /* ------------------------------ loading -------------------------------- */
+
+  /**
+   * Load (and by default start) a track. Safe to call from a click handler —
+   * the audio element starts buffering + playing synchronously, so there is no
+   * perceptible delay before the first sample.
+   */
+  async load(track: TrackDTO, opts: LoadOptions = {}): Promise<void> {
+    const { autoplay = true, startAt = 0 } = opts;
+    const token = ++this.loadToken;
+    const key = this.sourceKey(track);
+
+    // Same source already loaded → just resume/restart, never a second player.
+    if (this.loadedKey === key && this.current?.id === track.id) {
+      if (autoplay) {
+        if (this.kind === "native") nativePlayback.play();
+        else if (this.kind === "youtube") this.yt?.play();
+        else await this.playElement();
+      }
       return;
     }
-    this.loadedTrackKey = trackKey;
+
+    this.cancelSleepTimer();
     this.current = track;
+    this.loadedKey = key;
     this.normGain = this.computeNormGain(track);
-
-    // YouTube tracks play through our audio proxy by default → the WebAudio
-    // graph (10-band EQ, loudness, crossfade) applies. codec "iframe" opts out.
-    if (track.source === "youtube" && track.sourceId && track.codec === "iframe") {
-      this.loadYouTube(track, autoplay, crossfade);
-    } else {
-      // Live radio + Quran: never crossfade (infinite stream / sacred) and skip pre-buffer.
-      const noXf = track.source === "radio" || track.source === "quran";
-      this.loadAudio(track, autoplay, noXf ? false : crossfade);
-    }
+    this.lastDuration = track.durationSec > 0 ? track.durationSec : 0;
+    this.endedGuard = false;
+    this.lastEmittedPos = -1;
     this.emit("trackchange", track);
-    this.applyVolume();
-  }
 
-  private loadYouTube(track: TrackDTO, autoplay: boolean, crossfade: boolean) {
-    const yt = this.getYT();
-    yt.ensurePlayer();
-    // Stop the audio-element path.
-    for (const el of this.els) {
-      el.pause();
-      el.src = "";
+    const useYouTube = track.source === "youtube" && track.codec === "iframe" && !!track.sourceId;
+    const useNative = !useYouTube && nativePlayback.canHandle(track);
+
+    if (useNative) {
+      // The WebView must never also play audio while ExoPlayer owns the session.
+      this.kind = "native";
+      this.hardStopElements();
+      this.stopTick();
+      // Catalog tracks are served by our own API: resolve a direct media URL so
+      // ExoPlayer (not the WebView) streams it — that is what keeps audio alive
+      // in the background, on the lock screen and in the widgets.
+      const needsResolve = track.id > 0 && !/^(content|file):\/\//.test(track.streamUrl);
+      if (needsResolve) {
+        void nativePlayback.resolve(track.id).then((res) => {
+          if (token !== this.loadToken) return; // a newer load took over
+          if (!res?.url && res?.embed) {
+            // No direct audio for this item (region-locked YouTube): fall back to
+            // the official embed so the user still hears the song.
+            const vid = res.embed.match(/embed\/([\w-]{6,})/)?.[1] ?? track.sourceId ?? null;
+            this.kind = "youtube";
+            const yt = this.getYT();
+            yt.ensurePlayer();
+            if (vid) yt.loadVideo(vid, autoplay);
+            this.startTick();
+            return;
+          }
+          nativePlayback.load(track, {
+            autoplay,
+            startAt,
+            uri: res?.url || track.streamUrl,
+            queue: this.nativeQueueFrom(track, res?.url),
+          });
+        });
+      } else {
+        nativePlayback.load(track, { autoplay, startAt, queue: this.nativeQueueFrom(track) });
+      }
+      this.startTick();
+      return;
     }
-    const wasPlaying = this.kind === "youtube" && this.playing;
-    this.kind = "youtube";
-    this.lastYtDuration = 0;
-    const targetVol = this.muted ? 0 : this.volume;
-    yt.setPlaybackRate(this.rate);
-    const doLoad = () => {
+
+    if (useYouTube) {
+      this.kind = "youtube";
+      this.hardStopElements();
+      const yt = this.getYT();
+      yt.ensurePlayer();
+      yt.setVolume(this.muted ? 0 : this.volume);
+      yt.setPlaybackRate(this.rate);
       yt.loadVideo(track.sourceId!, autoplay);
-      if (autoplay) yt.fadeVolume(targetVol, 0.6);
-    };
-    // YouTube crossfade: fade the old video out, switch, fade the new one in.
-    if (crossfade && wasPlaying && this.crossfadeSec > 0) {
-      yt.fadeVolume(0, Math.min(this.crossfadeSec, 3), doLoad);
-    } else {
-      yt.setVolume(targetVol);
-      doLoad();
+      this.startTick();
+      return;
     }
-    this.startYtPoll();
-  }
 
-  private loadAudio(track: TrackDTO, autoplay: boolean, crossfade: boolean) {
-    this.stopYtPoll();
-    if (this.yt) this.yt.pause();
+    // ---- HTML audio path ----
+    if (token !== this.loadToken) return; // a newer load took over
     this.kind = "audio";
+    if (this.yt) this.yt.pause();
+    if (nativePlayback.active) nativePlayback.stop();
 
-    const next = 1 - this.active;
+    const ctx = this.ensureContext();
+    const next = this.els.length ? 1 - this.active : 0;
     const el = this.els[next];
-    const prevEl = this.els[this.active];
-    const prevGain = this.elGains[this.active];
-    const nextGain = this.elGains[next];
-    const wasPlaying = !prevEl.paused && prevEl.src !== "";
-    const xf = crossfade && wasPlaying && this.crossfadeSec > 0 ? this.crossfadeSec : 0;
+    if (!el || !ctx) return;
 
-    el.src = track.streamUrl;
-    el.playbackRate = this.rate;
-    el.currentTime = 0;
+    // Silence every other element first — this is what fixes "Quran plays but
+    // the old song comes back when I hit stop".
+    for (let i = 0; i < this.els.length; i++) {
+      if (i === next) continue;
+      const other = this.els[i];
+      try {
+        other.pause();
+        other.removeAttribute("src");
+        other.load();
+      } catch {
+        /* ignore */
+      }
+      this.elGains[i].gain.cancelScheduledValues(ctx.currentTime);
+      this.elGains[i].gain.value = 0;
+    }
+
+    this.active = next;
+    this.elGains[next].gain.cancelScheduledValues(ctx.currentTime);
+    this.elGains[next].gain.value = 1;
+
+    try {
+      el.src = apiUrl(track.streamUrl);
+      el.playbackRate = this.rate;
+      if (startAt > 0) el.currentTime = startAt;
+      el.load();
+    } catch {
+      this.emit("error", "Could not load this stream");
+      return;
+    }
 
     if (autoplay) {
-      if (xf > 0) {
-        nextGain.gain.cancelScheduledValues(this.ctx!.currentTime);
-        nextGain.gain.setValueAtTime(0.0001, this.ctx!.currentTime);
-        const t = this.ctx!.currentTime;
-        const vol = this.muted ? 0 : this.volume;
-        nextGain.gain.exponentialRampToValueAtTime(Math.max(vol * this.normGain, 0.0001), t + xf);
-        prevGain.gain.cancelScheduledValues(t);
-        prevGain.gain.setValueAtTime(Math.max(prevGain.gain.value, 0.0001), t);
-        prevGain.gain.exponentialRampToValueAtTime(0.0001, t + xf);
-        this.crossfadeTimer = setTimeout(() => {
-          prevEl.pause();
-          prevEl.src = "";
-          prevGain.gain.setValueAtTime(0.0001, this.ctx!.currentTime);
-        }, xf * 1000 + 60);
-      } else {
-        nextGain.gain.setTargetAtTime(
-          this.muted ? 0 : this.volume * this.normGain,
-          this.ctx!.currentTime,
-          0.02,
-        );
-        prevEl.pause();
-        prevEl.src = "";
-      }
-      void el.play().catch((err: unknown) => {
-        this.emit("error", err instanceof Error ? err.message : "autoplay blocked");
-      });
-    } else {
-      nextGain.gain.setTargetAtTime(0, this.ctx!.currentTime, 0.02);
+      void this.playElement(token);
     }
-    this.active = next;
+    this.startTick();
   }
 
-  /** Pre-buffer the next track into the idle element (gapless, audio path only). */
-  preload(url: string) {
-    if (!this.ctx || this.kind !== "audio") return;
-    const idle = this.els[1 - this.active];
-    if (idle.src !== url) {
-      idle.src = url;
-      idle.load();
-    }
-  }
-
-  async play(): Promise<void> {
-    this.ensureContext();
-    if (this.kind === "youtube" && this.yt) {
-      this.yt.play();
-      return;
-    }
+  private async playElement(expectedToken?: number): Promise<void> {
     const el = this.els[this.active];
-    if (!el.src) return;
+    if (!el || !el.src) return;
     try {
+      // Synchronous call within the gesture keeps the autoplay allowance.
       await el.play();
+      if (expectedToken !== undefined && expectedToken !== this.loadToken) return;
+      this.startTick();
+      this.emit("play");
     } catch (err) {
-      this.emit("error", err instanceof Error ? err.message : "play failed");
+      const name = (err as Error)?.name;
+      if (name === "AbortError") return; // superseded by a newer load — not an error
+      this.stopTick();
+      this.emit("error", (err as Error)?.message ?? "Playback was blocked");
+      this.emit("pause");
     }
   }
 
-  pause() {
-    if (this.kind === "youtube" && this.yt) {
-      this.yt.pause();
-      return;
-    }
-    const el = this.els[this.active];
-    el.pause();
-  }
-
-  /** Hard stop: pause + release the source (works for live radio/TV streams). */
-  stop() {
-    this.stopYtPoll();
-    if (this.yt) this.yt.pause();
-    for (const el of this.els) {
+  private hardStopElements() {
+    for (let i = 0; i < this.els.length; i++) {
+      const el = this.els[i];
       try {
         el.pause();
         el.removeAttribute("src");
@@ -395,103 +498,239 @@ export class UniversalPlaybackEngine {
       } catch {
         /* ignore */
       }
+      if (this.ctx) {
+        this.elGains[i].gain.cancelScheduledValues(this.ctx.currentTime);
+        this.elGains[i].gain.value = 0;
+      }
     }
-    this.loadedTrackKey = null;
-    this.current = null;
-    this.emit("pause");
   }
 
-  toggle(): Promise<void> {
-    if (this.kind === "youtube" && this.yt) {
-      if (this.yt.getState() === YT.PlayerState.PLAYING) this.yt.pause();
-      else this.yt.play();
-      return Promise.resolve();
+  /* ------------------------------ transport ------------------------------- */
+
+  async play(): Promise<void> {
+    if (this.kind === "native") return nativePlayback.play();
+    if (this.kind === "youtube") {
+      this.yt?.play();
+      this.startTick();
+      return;
     }
-    const el = this.els[this.active];
-    if (!el.src) return Promise.resolve();
-    if (el.paused) return this.play();
-    this.pause();
-    return Promise.resolve();
+    this.ensureContext();
+    await this.playElement();
   }
 
-  seek(sec: number) {
-    if (this.kind === "youtube" && this.yt) {
-      this.yt.seekTo(sec);
+  pause(): void {
+    if (this.kind === "native") {
+      nativePlayback.pause();
+      this.stopTick();
+      return;
+    }
+    if (this.kind === "youtube") {
+      this.yt?.pause();
+      this.stopTick();
       return;
     }
     const el = this.els[this.active];
-    if (!el.src) return;
+    if (el) el.pause();
+    this.stopTick();
+  }
+
+  /**
+   * Hard stop and release EVERY source (radio / Quran / TV / music).
+   *
+   * All three backends are silenced regardless of which one currently owns the
+   * output: that is what makes the little "X" in the playbar — and stopping a
+   * surah — truly end playback instead of letting a previously started song
+   * reappear on the next play().
+   */
+  stop(): void {
+    this.stopTick();
+    this.loadToken++; // invalidates any in-flight load/play promise
     try {
-      el.currentTime = clamp(sec, 0, Number.isFinite(el.duration) ? el.duration : sec);
+      nativePlayback.stop();
+    } catch {
+      /* no native host */
+    }
+    this.yt?.pause();
+    this.hardStopElements();
+    this.kind = "audio";
+    this.loadedKey = null;
+    this.current = null;
+    this.lastDuration = 0;
+    this.lastEmittedPos = -1;
+    this.endedGuard = false;
+    this.emit("pause");
+  }
+
+  async toggle(): Promise<void> {
+    if (this.isPlaying) this.pause();
+    else await this.play();
+  }
+
+  seek(sec: number): void {
+    if (this.kind === "native") {
+      nativePlayback.seek(sec);
+      return;
+    }
+    if (this.kind === "youtube") {
+      this.yt?.seekTo(sec);
+      return;
+    }
+    const el = this.els[this.active];
+    if (!el || !el.src) return;
+    try {
+      const max = Number.isFinite(el.duration) ? el.duration : sec;
+      el.currentTime = clamp(sec, 0, max);
+      this.lastEmittedPos = -1;
+      this.emit("timeupdate", sec);
     } catch {
       /* metadata not ready yet */
     }
   }
 
   get position(): number {
-    if (this.kind === "youtube" && this.yt) return this.yt.getCurrentTime();
-    return this.els[this.active]?.currentTime ?? 0;
+    if (this.kind === "native") return nativePlayback.position;
+    if (this.kind === "youtube") return this.yt?.getCurrentTime() ?? 0;
+    const el = this.els[this.active];
+    return el && Number.isFinite(el.currentTime) ? el.currentTime : 0;
   }
 
+  /**
+   * Duration, in order of trust: the media element's real `duration`, then the
+   * value reported by the backend, then the catalog/metadata duration. Using
+   * `||` between sources is what previously produced a timer that ran while the
+   * slider sat still — never fall back when a real value exists.
+   */
   get duration(): number {
-    if (this.kind === "youtube" && this.yt) return this.yt.getDuration();
-    const d = this.els[this.active]?.duration;
-    return Number.isFinite(d) ? (d as number) : 0;
-  }
-
-  get playing(): boolean {
-    if (this.kind === "youtube" && this.yt) {
-      return this.yt.getState() === YT.PlayerState.PLAYING;
+    if (this.kind === "native") {
+      const n = nativePlayback.duration;
+      if (Number.isFinite(n) && n > 0) return n;
+      return this.lastDuration;
+    }
+    if (this.kind === "youtube") {
+      const y = this.yt?.getDuration() ?? 0;
+      if (Number.isFinite(y) && y > 0) return y;
+      return this.lastDuration;
     }
     const el = this.els[this.active];
-    return !!el && !el.paused && !el.ended;
+    const d = el?.duration;
+    if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
+    return this.lastDuration;
   }
 
-  /* ------------------------- YouTube time polling ----------------------- */
+  get isPlaying(): boolean {
+    if (this.kind === "native") return nativePlayback.isPlaying;
+    if (this.kind === "youtube") {
+      const state = this.yt?.getState();
+      return state === 1; // YT.PlayerState.PLAYING
+    }
+    const el = this.els[this.active];
+    return !!el && !el.paused && !el.ended && !!el.src;
+  }
 
-  private startYtPoll() {
-    this.stopYtPoll();
-    this.ytPoll = setInterval(() => {
-      if (this.kind !== "youtube" || !this.yt) return;
-      this.emit("timeupdate", this.yt.getCurrentTime());
-      const d = this.yt.getDuration();
-      if (d > 0 && Math.abs(d - this.lastYtDuration) > 0.5) {
-        this.lastYtDuration = d;
-        this.emit("durationchange", d);
+  /** Back-compat alias. */
+  get playing(): boolean {
+    return this.isPlaying;
+  }
+
+  get currentTrack(): TrackDTO | null {
+    return this.current;
+  }
+
+  get backend(): SourceKind {
+    return this.kind;
+  }
+
+  private pushDuration() {
+    const d = this.duration;
+    if (d > 0 && Math.abs(d - this.lastDuration) > 0.3) {
+      this.lastDuration = d;
+      this.emit("durationchange", d);
+    }
+  }
+
+  /* --------------------------- position ticking --------------------------- */
+
+  private startTick() {
+    if (this.tick) return;
+    this.tick = setInterval(() => {
+      if (!this.isPlaying) {
+        this.stopTick();
+        return;
       }
-    }, 400);
+      const pos = this.position;
+      if (Number.isFinite(pos) && Math.abs(pos - this.lastEmittedPos) >= 0.08) {
+        this.lastEmittedPos = pos;
+        this.emit("timeupdate", pos);
+      }
+      if (this.kind === "youtube") {
+        const d = this.duration;
+        if (d > 0 && Math.abs(d - this.lastYtDuration) > 0.5) {
+          this.lastYtDuration = d;
+          this.lastDuration = d;
+          this.emit("durationchange", d);
+        }
+      } else {
+        this.pushDuration();
+      }
+    }, POSITION_TICK_MS);
   }
 
-  private stopYtPoll() {
-    if (this.ytPoll) clearInterval(this.ytPoll);
-    this.ytPoll = null;
+  private stopTick() {
+    if (this.tick) clearInterval(this.tick);
+    this.tick = null;
   }
 
-  /* ---------------------------- sleep timer ---------------------------- */
+  /* ------------------------------ pre-buffer ------------------------------ */
 
-  /** Fade out over `fadeSec` then pause at `endsAt` epoch ms. */
-  startSleepTimer(endsAt: number, fadeSec = 30) {
+  /** Warm the idle element so the next track starts instantly (audio path). */
+  preloadNext(url: string | undefined | null) {
+    if (!url || this.kind !== "audio" || this.els.length < 2) return;
+    // Never touch an element that still has live audio — preloading over the
+    // playing element is one of the classic "ghost playback" causes.
+    if (!this.els[this.active]?.paused && this.els[this.active]?.src) return;
+    const idle = this.els[1 - this.active];
+    if (idle.src !== url) {
+      try {
+        idle.preload = "auto";
+        idle.src = apiUrl(url);
+        idle.load();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /* ----------------------------- sleep timer ------------------------------ */
+
+  startSleepTimer(endsAt: number, fadeSec = 20) {
     this.cancelSleepTimer();
     const ms = endsAt - Date.now();
     if (ms <= 0) {
       this.pause();
       return;
     }
-    const ctx = this.ensureContext();
-    const master = this.master!;
     const fadeStart = Math.max(0, ms - fadeSec * 1000);
     this.sleepTimer = setTimeout(() => {
-      const base = this.muted ? 0 : this.volume * this.normGain;
-      const t = ctx.currentTime;
-      master.gain.cancelScheduledValues(t);
-      master.gain.setValueAtTime(Math.max(base, 0.0001), t);
-      master.gain.exponentialRampToValueAtTime(0.0001, t + fadeSec);
-      if (this.kind === "youtube" && this.yt) this.yt.setVolume(0);
+      if (this.kind === "native") {
+        nativePlayback.fadeOut(fadeSec);
+        this.sleepFadeTimer = setTimeout(() => {
+          this.pause();
+          nativePlayback.setVolume(this.muted ? 0 : this.volume);
+        }, fadeSec * 1000 + 100);
+        return;
+      }
+      if (this.ctx && this.master) {
+        const t = this.ctx.currentTime;
+        const base = Math.max(this.muted ? 0.0001 : this.volume, 0.0001);
+        this.master.gain.cancelScheduledValues(t);
+        this.master.gain.setValueAtTime(base, t);
+        this.master.gain.exponentialRampToValueAtTime(0.0001, t + fadeSec);
+      }
+      if (this.kind === "youtube" && this.yt) this.yt.fadeVolume(0, fadeSec);
       this.sleepFadeTimer = setTimeout(() => {
         this.pause();
         this.applyVolume();
         if (this.kind === "youtube" && this.yt) this.yt.setVolume(this.muted ? 0 : this.volume);
-        this.emit("pause");
       }, fadeSec * 1000 + 100);
     }, fadeStart);
   }
@@ -505,9 +744,8 @@ export class UniversalPlaybackEngine {
     if (this.kind === "youtube" && this.yt) this.yt.setVolume(this.muted ? 0 : this.volume);
   }
 
-  /* ----------------------------- visualizer ---------------------------- */
+  /* ------------------------------ visualizer ------------------------------ */
 
-  /** AnalyserNode for the real-time spectrum visualizer (audio path only). */
   getAnalyser(): AnalyserNode | null {
     return this.analyser;
   }
@@ -523,15 +761,58 @@ export class UniversalPlaybackEngine {
     this.analyser.getByteTimeDomainData(arr);
     return true;
   }
+
+  /* ------------------------------- youtube -------------------------------- */
+
+  private getYT(): YouTubeBridge {
+    if (!this.yt) {
+      this.yt = new YouTubeBridge();
+      this.yt.onStateChange = (state) => {
+        if (this.kind !== "youtube") return;
+        if (state === 1) {
+          this.startTick();
+          this.emit("play");
+        } else if (state === 2) {
+          this.stopTick();
+          this.emit("pause");
+        } else if (state === 0) {
+          this.stopTick();
+          this.emit("ended");
+        } else if (state === 3) {
+          this.emit("buffering", true);
+        }
+      };
+      this.yt.onError = (code) => {
+        if (this.kind !== "youtube") return;
+        this.stopTick();
+        this.emit(
+          "error",
+          code === 101 || code === 150
+            ? "The owner disabled playback of this video on other sites"
+            : code === 100
+              ? "Video not found"
+              : `YouTube player error (${code})`,
+        );
+        this.emit("pause");
+      };
+    }
+    return this.yt;
+  }
 }
 
-/** Process-wide singleton — one engine per browser tab. */
+/** Process-wide singleton — exactly one engine per window/document. */
 let engine: UniversalPlaybackEngine | null = null;
 
 export function getEngine(): UniversalPlaybackEngine {
   if (typeof window === "undefined") {
+    // SSR: a throw-away instance so imports never crash during prerender.
     return new UniversalPlaybackEngine();
   }
-  if (!engine) engine = new UniversalPlaybackEngine();
+  if (!engine) {
+    engine = new UniversalPlaybackEngine();
+    const g = window as unknown as { __donmuseEngine?: UniversalPlaybackEngine };
+    if (g.__donmuseEngine && g.__donmuseEngine !== engine) return g.__donmuseEngine;
+    g.__donmuseEngine = engine;
+  }
   return engine;
 }

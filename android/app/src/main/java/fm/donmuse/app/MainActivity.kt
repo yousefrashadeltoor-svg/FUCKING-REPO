@@ -1,299 +1,229 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-
 package fm.donmuse.app
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.webkit.ConsoleMessage
+import android.webkit.PermissionRequest
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
-import fm.donmuse.app.data.DeviceMusic
-import fm.donmuse.app.data.DeviceSong
+import fm.donmuse.app.bridge.NativeBridge
+import fm.donmuse.app.bridge.NativeEvents
+import fm.donmuse.app.bridge.PendingPermissions
 import fm.donmuse.app.playback.PlaybackService
-import fm.donmuse.app.playback.Playback
-import kotlinx.coroutines.Dispatchers
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
-private val Void = Color(0xFF030304)
-private val Panel = Color(0xFF111114)
-private val Accent = Color(0xFF1DB954)
-private val Gold = Color(0xFFC9A24A)
-
+/**
+ * DON MUSE — Android host.
+ *
+ * This is NOT a "website in a box": the WebView renders the UI (the same UI the
+ * web app uses) while everything the platform can do better is delegated to
+ * real Android code through the `DonMuseNative` bridge:
+ *
+ *   • ExoPlayer + MediaSessionService  → background playback, media-style
+ *     notification (play/pause/prev/next), lock-screen + Bluetooth controls,
+ *     widgets, gapless playback, audio focus, becoming-noisy handling.
+ *   • MediaStore                        → the device library, read in place.
+ *   • SharedPreferences (app-private)   → all app data, invisible to the user
+ *     and to other apps. No IndexedDB for app data.
+ *   • DownloadManager / MediaStore      → saving audio into the Music library.
+ *   • WorkManager                       → release notifications.
+ */
 class MainActivity : ComponentActivity() {
+
+    private lateinit var webView: WebView
+    private lateinit var bridge: NativeBridge
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        bridge.onPermissionsResult(
+            result.filterValues { it }.keys.toList(),
+            result.filterValues { !it }.keys.toList(),
+        )
+    }
+
+    private val manageStorageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { bridge.onManageStorageResult(true) }
+
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+
+        // Connect a controller so the UI can read/replace the real native queue.
         val token = SessionToken(this, android.content.ComponentName(this, PlaybackService::class.java))
         controllerFuture = MediaController.Builder(this, token).buildAsync()
 
-        setContent {
-            MaterialTheme(colorScheme = darkColorScheme(background = Void, surface = Panel, primary = Accent, tertiary = Gold)) {
-                DonMuseRoot()
+        webView = WebView(this).apply {
+            setBackgroundColor(0xFF05060A.toInt())
+            setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        }
+        setContentView(webView)
+
+        bridge = NativeBridge(this, webView, permissionLauncher, manageStorageLauncher)
+        webView.addJavascriptInterface(bridge, "DonMuseNative")
+        NativeEvents.attach(this, webView)
+
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            cacheMode = WebSettings.LOAD_DEFAULT
+            loadsImagesAutomatically = true
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            allowFileAccess = true
+            allowContentAccess = true
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            builtInZoomControls = false
+            displayZoomControls = false
+            textZoom = 100
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
+        }
+
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                android.util.Log.d("DonMuseWeb", "${m.message()} @${m.lineNumber()}")
+                return true
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest) = request.grant(request.resources)
+        }
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val url = request.url
+                val host = url.host ?: return false
+                if (isInternalHost(host)) return false
+                return try {
+                    startActivity(Intent(Intent.ACTION_VIEW, url))
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                // Lets the design system apply Android-specific safe areas and
+                // disables web-only paths (IndexedDB storage, file pickers…).
+                view?.evaluateJavascript(
+                    "document.documentElement.dataset.host='android';",
+                    null,
+                )
             }
         }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // Ask the SPA to close a sheet / go back one history entry.
+                webView.evaluateJavascript(
+                    "(function(){if(window.__donmuseBack&&window.__donmuseBack()){return '1'}return '0'})()",
+                ) { handled ->
+                    if (handled != "\"1\"") {
+                        if (webView.canGoBack()) webView.goBack() else finish()
+                    }
+                }
+            }
+        })
+
+        requestStartupPermissions()
+        webView.loadUrl(firstUrl(intent))
+    }
+
+    private fun isInternalHost(host: String): Boolean =
+        host == DonMuseApp.WEB_HOST || host.endsWith(".donmuse.app") || host == "localhost"
+
+    private fun firstUrl(intent: Intent?): String {
+        val data: Uri? = intent?.data ?: return DonMuseApp.startUrl(this)
+        return when {
+            data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
+            data.scheme?.startsWith("content") == true ->
+                DonMuseApp.routeUrl(this, "my-music") + "?open=" + Uri.encode(data.toString())
+            else -> data.toString()
+        }
+    }
+
+    /** Android 13+ media/notification permissions + storage on older versions. */
+    private fun requestStartupPermissions() {
+        val wanted = mutableListOf(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            wanted += Manifest.permission.READ_MEDIA_AUDIO
+            wanted += Manifest.permission.READ_MEDIA_VIDEO
+            wanted += Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            wanted += Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        val missing = wanted.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            PendingPermissions.pending = missing.toTypedArray()
+            permissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val data: Uri? = intent.data ?: return
+        val target = when {
+            data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
+            data.scheme?.startsWith("content") == true ->
+                DonMuseApp.routeUrl(this, "my-music") + "?open=" + Uri.encode(data.toString())
+            else -> data.toString()
+        }
+        webView.loadUrl(target)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        webView.onResume()
+        // Re-sync the UI with whatever the notification/widget did while away.
+        webView.evaluateJavascript(
+            "window.__donmuseResync&&window.__donmuseResync()",
+            null,
+        )
+    }
+
+    override fun onPause() {
+        // Playback deliberately keeps running: it lives in the foreground
+        // service, not in the WebView.
+        webView.onPause()
+        super.onPause()
     }
 
     override fun onDestroy() {
         controllerFuture?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DonMuseRoot() {
-    val ctx = LocalContext.current
-    var tab by remember { mutableStateOf(0) }
-    var songs by remember { mutableStateOf<List<DeviceSong>>(emptyList()) }
-    var quran by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var radio by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    val scope = rememberCoroutineScope()
-
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        refresh(ctx) { scanned -> songs = scanned; loading = false }
-    }
-    LaunchedEffect(Unit) {
-        val perms = if (Build.VERSION.SDK_INT >= 33) {
-            mutableListOf(
-                Manifest.permission.READ_MEDIA_AUDIO,
-                Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.POST_NOTIFICATIONS,
-            )
-        } else {
-            mutableListOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        permLauncher.launch(perms.toTypedArray())
-        refresh(ctx) { scanned -> songs = scanned; loading = false }
-        scope.launch {
-            quran = withContext(Dispatchers.IO) { fetchQuran() }
-            radio = withContext(Dispatchers.IO) { fetchRadio() }
-        }
-    }
-
-    Scaffold(
-        containerColor = Void,
-        bottomBar = {
-            NavigationBar(containerColor = Panel) {
-                val items = listOf("Library" to Icons.Filled.LibraryMusic, "Quran" to Icons.Filled.MenuBook, "Radio" to Icons.Filled.Radio, "Player" to Icons.Filled.PlayCircle)
-                items.forEachIndexed { i, (label, icon) ->
-                    NavigationBarItem(
-                        selected = tab == i, onClick = { tab = i },
-                        icon = { Icon(icon, label) }, label = { Text(label, fontSize = 10.sp) }
-                    )
-                }
-            }
-        }
-    ) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize().background(Void)) {
-            Header()
-            when (tab) {
-                0 -> DeviceList(songs, loading) { selected ->
-                    Playback.play(
-                        songs.map { it.title to it.artist },
-                        selected,
-                        songs.map { it.uri.toString() },
-                    )
-                    tab = 3
-                }
-                1 -> QuranList(quran)
-                2 -> RadioList(radio)
-                else -> PlayerPanel()
-            }
-        }
+    @Suppress("unused")
+    private fun applyInsets() {
+        WindowCompat.getInsetsController(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.systemBars())
     }
 }
-
-@Composable
-private fun Header() {
-    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(38.dp).background(Color.White, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-            Text("☹", fontSize = 20.sp, color = Color.Black)
-        }
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text("DON MUSE", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
-            Text("Music · Radio · TV · Offline", color = Color(0xFF6E6E76), fontSize = 10.sp)
-        }
-    }
-}
-
-@Composable
-private fun DeviceList(songs: List<DeviceSong>, loading: Boolean, onPlay: (Int) -> Unit) {
-    if (loading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
-        return
-    }
-    if (songs.isEmpty()) {
-        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text("No device audio found. Grant the music permission to browse your library.", color = Color(0xFF9A9AA2))
-        }
-        return
-    }
-    Text("Your device · ${songs.size} songs", color = Color(0xFF9A9AA2), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(songs.take(500)) { s ->
-            ListItem(
-                modifier = Modifier.clickable { onPlay(songs.indexOf(s)) },
-                colors = ListItemDefaults.colors(containerColor = Void),
-                leadingContent = {
-                    Box(Modifier.size(42.dp).background(Panel, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Accent)
-                    }
-                },
-                headlineContent = { Text(s.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = { Text("${s.artist} · ${s.album}", color = Color(0xFF8A8A92), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                trailingContent = { Text(formatMs(s.durationMs), color = Color(0xFF6E6E76), fontSize = 11.sp) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun QuranList(items: List<Pair<String, String>>) {
-    if (items.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Loading reciters…", color = Color(0xFF9A9AA2)) }
-        return
-    }
-    Text("القرآن الكريم · complete surahs", color = Gold, fontSize = 12.sp, modifier = Modifier.padding(16.dp))
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(items) { (title, sub) ->
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Void),
-                headlineContent = { Text(title, color = Color(0xFFF3E6C4), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = { Text(sub, color = Color(0xFF8A8A92), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun RadioList(items: List<Triple<String, String, String>>) {
-    if (items.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Loading stations…", color = Color(0xFF9A9AA2)) }
-        return
-    }
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(items) { (name, country, codec) ->
-            ListItem(
-                colors = ListItemDefaults.colors(containerColor = Void),
-                headlineContent = { Text(name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = { Text("$country · $codec", color = Color(0xFF8A8A92)) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun PlayerPanel() {
-    val player = PlaybackService.player
-    var title by remember { mutableStateOf(player?.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()) }
-    var playing by remember { mutableStateOf(player?.isPlaying == true) }
-    DisposableEffect(player) {
-        val listener = object : androidx.media3.common.Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
-            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
-                title = mediaItem?.mediaMetadata?.title?.toString().orEmpty()
-            }
-        }
-        player?.addListener(listener)
-        onDispose { player?.removeListener(listener) }
-    }
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Panel, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Album, contentDescription = null, tint = Accent, modifier = Modifier.size(112.dp))
-        }
-        Spacer(Modifier.height(18.dp))
-        Text(title.ifBlank { "Nothing playing" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(if (playing) "Playing" else "Paused", color = Color(0xFF8A8A92), fontSize = 12.sp)
-        Spacer(Modifier.height(20.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { Playback.previous() }) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", tint = Color.White) }
-            FilledIconButton(onClick = { Playback.toggle(); playing = PlaybackService.player?.isPlaying == true }, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Accent, contentColor = Color.Black)) {
-                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play")
-            }
-            IconButton(onClick = { Playback.next() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next", tint = Color.White) }
-            IconButton(onClick = { Playback.stop(); playing = false; title = "" }) { Icon(Icons.Filled.Close, contentDescription = "Stop", tint = Color(0xFFFF6B75)) }
-        }
-        Spacer(Modifier.height(10.dp))
-        Text("Background playback · system media notification · widgets", color = Color(0xFF8A8A92), fontSize = 11.sp)
-    }
-}
-
-/* -------------------------------- helpers -------------------------------- */
-
-private fun refresh(ctx: android.content.Context, done: (List<DeviceSong>) -> Unit) {
-    Thread {
-        val list = runCatching { DeviceMusic.scan(ctx) }.getOrDefault(emptyList())
-        (ctx as? android.app.Activity)?.runOnUiThread { done(list) }
-    }.start()
-}
-
-private fun formatMs(ms: Long): String {
-    val total = ms / 1000
-    return "%d:%02d".format(total / 60, total % 60)
-}
-
-private fun get(url: String): String {
-    val c = URL(url).openConnection() as HttpURLConnection
-    c.connectTimeout = 12000; c.readTimeout = 20000
-    return c.inputStream.bufferedReader().use { it.readText() }
-}
-
-private fun fetchQuran(): List<Pair<String, String>> = runCatching {
-    val root = JSONObject(get("${DonMuseApp.API_BASE}/api/quran"))
-    val reciters = root.getJSONArray("reciters")
-    val surahs = root.getJSONArray("surahs")
-    val out = ArrayList<Pair<String, String>>()
-    for (r in 0 until reciters.length()) {
-        val rec = reciters.getJSONObject(r)
-        if (!rec.optBoolean("isEgyptian")) continue
-        for (s in 0 until minOf(surahs.length(), 20)) {
-            val su = surahs.getJSONObject(s)
-            out += ("سورة ${su.optString("ar")}" to "${rec.optString("name")} · ${su.optString("en")}")
-        }
-    }
-    out
-}.getOrDefault(emptyList())
-
-private fun fetchRadio(): List<Triple<String, String, String>> = runCatching {
-    val root = JSONObject(get("${DonMuseApp.API_BASE}/api/radio"))
-    val egypt = root.optJSONArray("egypt") ?: JSONArray()
-    val out = ArrayList<Triple<String, String, String>>()
-    for (i in 0 until minOf(egypt.length(), 60)) {
-        val s = egypt.getJSONObject(i)
-        out += Triple(s.optString("name"), s.optString("country"), "${s.optString("codec")} ${s.optInt("bitrate")}k")
-    }
-    out
-}.getOrDefault(emptyList())

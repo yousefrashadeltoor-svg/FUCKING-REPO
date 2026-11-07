@@ -105,7 +105,23 @@ export interface LyricLine {
   text: string;
 }
 
-export type TrackSource = "youtube" | "audius" | "soundcloud" | "archive" | "jamendo" | "bandcamp" | "dailymotion" | "odysee" | "spotify" | "applemusic" | "deezer" | "quran" | "radio" | "internal";
+export type TrackSource =
+  | "youtube"
+  | "audius"
+  | "soundcloud"
+  | "archive"
+  | "jamendo"
+  | "bandcamp"
+  | "dailymotion"
+  | "odysee"
+  | "spotify"
+  | "applemusic"
+  | "deezer"
+  | "quran"
+  | "radio"
+  /** on-device media (Android MediaStore / File System Access API) */
+  | "local"
+  | "internal";
 
 export interface TrackDTO {
   id: number;
@@ -143,6 +159,12 @@ export interface TrackDTO {
   playCount: number;
   lyrics: LyricLine[];
   liked: boolean;
+  /** true when this is an on-device file (MediaStore / browser file) */
+  isDeviceItem?: boolean;
+  /** content:// or blob URL used by the native player */
+  localUri?: string;
+  mimeType?: string;
+  sizeBytes?: number;
 }
 
 export interface PlaylistDTO {

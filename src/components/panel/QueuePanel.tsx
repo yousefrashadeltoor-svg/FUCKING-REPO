@@ -6,12 +6,12 @@ import { cn, formatTime } from "@/lib/utils";
 import { usePlayerStore } from "@/stores/player-store";
 import type { TrackDTO } from "@/lib/types";
 import { useT } from "@/lib/i18n";
-import { playQueueNow } from "@/lib/player-actions";
 
 export function QueuePanel() {
   const t = useT();
   const queue = usePlayerStore((s) => s.queue);
   const index = usePlayerStore((s) => s.index);
+  const playQueue = usePlayerStore((s) => s.playQueue);
   const removeFromQueue = usePlayerStore((s) => s.removeFromQueue);
   const moveInQueue = usePlayerStore((s) => s.moveInQueue);
 
@@ -36,7 +36,7 @@ export function QueuePanel() {
         )}
       >
         <button
-          onClick={() => playQueueNow(queue, i)}
+          onClick={() => playQueue(queue, i)}
           className="w-6 shrink-0 text-right font-mono text-[11px] text-white/35 hover:text-white"
           title="Play this track"
         >
@@ -47,7 +47,7 @@ export function QueuePanel() {
           <img src={t.coverUrl} alt="" className="size-8 shrink-0 rounded-md object-cover" />
         )}
         <button
-          onClick={() => playQueueNow(queue, i)}
+          onClick={() => playQueue(queue, i)}
           className="min-w-0 flex-1 text-left"
           title={t.title}
         >

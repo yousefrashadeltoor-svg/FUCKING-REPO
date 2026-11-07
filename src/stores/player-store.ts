@@ -1,9 +1,11 @@
-// DON MUSE — global player state (Zustand + persist).
-// Queue, current track, transport controls, likes, and preferences live here.
+// DON MUSE — global player state (Zustand + platform persistence).
+// Queue, current track, transport, likes and audio preferences live here.
+// The engine is the single source of truth for *audible* state; this store
+// mirrors it (position / duration / playing) and holds user intent.
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { platformStorage } from "@/lib/storage";
 import type { TrackDTO } from "@/lib/types";
-import { getTrackIdentity } from "@/lib/track-identity";
 
 export type RepeatMode = "off" | "all" | "one";
 
@@ -13,6 +15,8 @@ export interface PlayerState {
   queue: TrackDTO[];
   index: number; // index of currentTrack inside queue (-1 = none)
   isPlaying: boolean;
+  buffering: boolean;
+  error: string | null;
   positionSec: number;
   durationSec: number;
   volume: number; // 0..1
@@ -20,20 +24,23 @@ export interface PlayerState {
   playbackRate: number;
   shuffle: boolean;
   repeat: RepeatMode;
-  /** When > 0, the current track repeats this many more times, then advances. */
   repeatCount: number;
+  /** where playback started, drives the badge in the playbar */
+  origin: string | null;
   // --- audio prefs ---
   crossfadeSec: number;
-  eqBands: number[]; // 10 values, -12..+12 dB
+  eqBands: number[];
   // --- sleep timer ---
-  sleepTimerEndsAt: number | null; // epoch ms
+  sleepTimerEndsAt: number | null;
   // --- library ---
   likedIds: number[];
   // --- actions ---
-  playTrack: (track: TrackDTO, opts?: { queue?: TrackDTO[]; index?: number; autoplay?: boolean }) => void;
-  playQueue: (queue: TrackDTO[], index: number) => void;
+  playTrack: (track: TrackDTO, opts?: { queue?: TrackDTO[]; index?: number; autoplay?: boolean; origin?: string }) => void;
+  playQueue: (queue: TrackDTO[], index: number, origin?: string) => void;
   togglePlay: () => void;
   setPlaying: (playing: boolean) => void;
+  setBuffering: (buffering: boolean) => void;
+  setError: (message: string | null) => void;
   next: () => void;
   prev: () => void;
   seek: (sec: number) => void;
@@ -55,12 +62,20 @@ export interface PlayerState {
   removeFromQueue: (i: number) => void;
   moveInQueue: (from: number, to: number) => void;
   clearQueue: () => void;
+  /** X button / full stop — clears the player completely (music, Quran, radio). */
+  stopAll: () => void;
   toggleLike: (trackId: number) => void;
   setLiked: (trackId: number, liked: boolean) => void;
   hydrateLikes: (ids: number[]) => void;
 }
 
 const EQ_DEFAULT = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+/** Stable identity for a playable source (used to avoid restarting a track). */
+export function trackKey(t: TrackDTO | null | undefined): string {
+  if (!t) return "";
+  return `${t.source}:${t.sourceId ?? ""}:${t.id}`;
+}
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
@@ -69,76 +84,88 @@ export const usePlayerStore = create<PlayerState>()(
       queue: [],
       index: -1,
       isPlaying: false,
+      buffering: false,
+      error: null,
       positionSec: 0,
       durationSec: 0,
-      volume: 0.8,
+      volume: 0.85,
       muted: false,
       playbackRate: 1,
       shuffle: false,
       repeat: "off",
       repeatCount: 0,
-      crossfadeSec: 4,
+      origin: null,
+      crossfadeSec: 0,
       eqBands: EQ_DEFAULT,
       sleepTimerEndsAt: null,
       likedIds: [],
 
       playTrack: (track, opts) => {
         const state = get();
-        const identity = getTrackIdentity(track);
-        if (opts?.queue) {
-          const requestedIndex =
-            opts.index ?? opts.queue.findIndex((item) => getTrackIdentity(item) === identity);
-          const index = opts.queue.length
-            ? Math.min(Math.max(requestedIndex, 0), opts.queue.length - 1)
-            : -1;
-          const currentTrack = index >= 0 ? opts.queue[index] : track;
+        if (opts?.queue && opts.queue.length > 0) {
+          const index = Math.max(
+            0,
+            opts.index ?? opts.queue.findIndex((t) => trackKey(t) === trackKey(track)),
+          );
           set({
             queue: opts.queue,
             index,
-            currentTrack,
+            currentTrack: opts.queue[index] ?? track,
             isPlaying: opts.autoplay !== false,
             positionSec: 0,
             durationSec: 0,
+            error: null,
+            origin: opts.origin ?? state.origin,
           });
           return;
         }
-
-        // Reuse a queue slot only when provider + source item + ID all match.
-        const existing = state.queue.findIndex(
-          (item) => getTrackIdentity(item) === identity,
-        );
+        // Not in a queue context: start a fresh single-track queue unless the
+        // current queue already contains it (then just jump to it).
+        const existing = state.queue.findIndex((t) => trackKey(t) === trackKey(track));
         if (existing >= 0) {
-          const queue = [...state.queue];
-          queue[existing] = track;
-          set({ queue, index: existing, currentTrack: track, isPlaying: true, positionSec: 0, durationSec: 0 });
+          set({
+            index: existing,
+            currentTrack: state.queue[existing],
+            isPlaying: opts?.autoplay !== false,
+            positionSec: 0,
+            error: null,
+          });
         } else {
-          set({ queue: [track], index: 0, currentTrack: track, isPlaying: true, positionSec: 0, durationSec: 0 });
+          set({
+            queue: [track],
+            index: 0,
+            currentTrack: track,
+            isPlaying: opts?.autoplay !== false,
+            positionSec: 0,
+            durationSec: 0,
+            error: null,
+            origin: opts?.origin ?? state.origin,
+          });
         }
       },
 
-      playQueue: (queue, requestedIndex) => {
-        const index = queue.length
-          ? Math.min(Math.max(Math.trunc(requestedIndex), 0), queue.length - 1)
-          : -1;
+      playQueue: (queue, index, origin) =>
         set({
           queue,
           index,
-          currentTrack: index >= 0 ? queue[index] : null,
-          isPlaying: index >= 0,
+          currentTrack: queue[index] ?? null,
+          isPlaying: true,
           positionSec: 0,
           durationSec: 0,
-        });
-      },
+          error: null,
+          ...(origin ? { origin } : {}),
+        }),
 
-      togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
+      togglePlay: () => set((s) => ({ isPlaying: s.currentTrack ? !s.isPlaying : false })),
       setPlaying: (isPlaying) => set({ isPlaying }),
+      setBuffering: (buffering) => set({ buffering }),
+      setError: (error) => set({ error }),
 
       next: () => {
         const { queue, index, repeat, shuffle, repeatCount } = get();
         if (queue.length === 0) return;
-        // Repeat ×N: replay the same track while the counter lasts.
         if (repeatCount > 0) {
-          set({ positionSec: 0, repeatCount: repeatCount - 1, isPlaying: true });
+          set({ positionSec: 0, repeatCount: repeatCount - 1 });
           return;
         }
         if (repeat === "one") {
@@ -159,24 +186,23 @@ export const usePlayerStore = create<PlayerState>()(
             return;
           }
         }
-        set({ index: nextIndex, currentTrack: queue[nextIndex], isPlaying: true, positionSec: 0, durationSec: 0 });
+        set({ index: nextIndex, currentTrack: queue[nextIndex], isPlaying: true, positionSec: 0 });
       },
 
       prev: () => {
-        const { queue, index, positionSec } = get();
+        const { queue, index, positionSec, repeat } = get();
         if (queue.length === 0) return;
-        // If we're >3s in, restart the current track (standard music-app behavior).
         if (positionSec > 3) {
           set({ positionSec: 0 });
           return;
         }
-        const prevIndex = index - 1 < 0 ? (get().repeat === "all" ? queue.length - 1 : 0) : index - 1;
-        set({ index: prevIndex, currentTrack: queue[prevIndex], isPlaying: true, positionSec: 0, durationSec: 0 });
+        const prevIndex = index - 1 < 0 ? (repeat === "all" ? queue.length - 1 : 0) : index - 1;
+        set({ index: prevIndex, currentTrack: queue[prevIndex], isPlaying: true, positionSec: 0 });
       },
 
-      seek: (sec) => set({ positionSec: sec }),
-      setPosition: (positionSec) => set({ positionSec }),
-      setDuration: (durationSec) => set({ durationSec: Number.isFinite(durationSec) ? Math.max(0, durationSec) : 0 }),
+      seek: (sec) => set({ positionSec: Math.max(0, sec) }),
+      setPosition: (positionSec) => set({ positionSec: Math.max(0, positionSec) }),
+      setDuration: (durationSec) => set({ durationSec: Math.max(0, durationSec) }),
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)), muted: false }),
       toggleMute: () => set((s) => ({ muted: !s.muted })),
       setPlaybackRate: (playbackRate) => set({ playbackRate }),
@@ -184,7 +210,8 @@ export const usePlayerStore = create<PlayerState>()(
       setRepeat: (repeat) =>
         set({ repeat: repeat === "off" ? "all" : repeat === "all" ? "one" : "off", repeatCount: 0 }),
       setRepeatMode: (repeat) => set({ repeat, repeatCount: 0 }),
-      setRepeatCount: (n) => set({ repeatCount: Math.max(0, Math.min(99, Math.round(n))), repeat: n > 0 ? "off" : get().repeat }),
+      setRepeatCount: (n) =>
+        set({ repeatCount: Math.max(0, Math.min(99, Math.round(n))), repeat: n > 0 ? "off" : get().repeat }),
       setCrossfade: (crossfadeSec) => set({ crossfadeSec: Math.min(15, Math.max(0, crossfadeSec)) }),
       setEqBands: (eqBands) => set({ eqBands }),
       setEqBand: (i, db) =>
@@ -197,10 +224,10 @@ export const usePlayerStore = create<PlayerState>()(
         set({ sleepTimerEndsAt: msFromNow === null ? null : Date.now() + msFromNow }),
 
       addToQueue: (track) =>
-        set((s) => (s.queue.some((item) => getTrackIdentity(item) === getTrackIdentity(track)) ? s : { queue: [...s.queue, track] })),
+        set((s) => (s.queue.some((t) => trackKey(t) === trackKey(track)) ? s : { queue: [...s.queue, track] })),
       playNext: (track) =>
         set((s) => {
-          if (s.queue.some((item) => getTrackIdentity(item) === getTrackIdentity(track))) return s;
+          if (s.queue.some((t) => trackKey(t) === trackKey(track))) return s;
           const queue = [...s.queue];
           queue.splice(s.index + 1, 0, track);
           return { queue };
@@ -211,14 +238,7 @@ export const usePlayerStore = create<PlayerState>()(
           let index = s.index;
           if (i < s.index) index -= 1;
           else if (i === s.index) index = Math.min(s.index, queue.length - 1);
-          return {
-            queue,
-            index,
-            currentTrack: queue[index] ?? null,
-            positionSec: 0,
-            durationSec: 0,
-            isPlaying: queue.length > 0 && s.isPlaying,
-          };
+          return { queue, index, currentTrack: queue[index] ?? null };
         }),
       moveInQueue: (from, to) =>
         set((s) => {
@@ -232,7 +252,22 @@ export const usePlayerStore = create<PlayerState>()(
           else if (from > s.index && to <= s.index) index += 1;
           return { queue, index };
         }),
-      clearQueue: () => set({ queue: [], index: -1, currentTrack: null, isPlaying: false, positionSec: 0, durationSec: 0 }),
+      clearQueue: () =>
+        set({ queue: [], index: -1, currentTrack: null, isPlaying: false, positionSec: 0, durationSec: 0 }),
+
+      stopAll: () =>
+        set({
+          isPlaying: false,
+          positionSec: 0,
+          durationSec: 0,
+          currentTrack: null,
+          queue: [],
+          index: -1,
+          buffering: false,
+          error: null,
+          origin: null,
+          sleepTimerEndsAt: null,
+        }),
 
       toggleLike: (trackId) =>
         set((s) => ({
@@ -252,7 +287,8 @@ export const usePlayerStore = create<PlayerState>()(
     }),
     {
       name: "aura-player",
-      version: 1,
+      version: 2,
+      storage: createJSONStorage(() => platformStorage),
       partialize: (s) => ({
         queue: s.queue,
         index: s.index,
@@ -261,19 +297,24 @@ export const usePlayerStore = create<PlayerState>()(
         playbackRate: s.playbackRate,
         shuffle: s.shuffle,
         repeat: s.repeat,
-        repeatCount: s.repeatCount,
         crossfadeSec: s.crossfadeSec,
         eqBands: s.eqBands,
         likedIds: s.likedIds,
-        // currentTrack intentionally not persisted as `isPlaying`; rehydrated paused.
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<PlayerState>;
+        const queue = Array.isArray(p.queue) ? p.queue : [];
+        const index = typeof p.index === "number" ? Math.min(Math.max(p.index, 0), Math.max(queue.length - 1, 0)) : -1;
         return {
           ...current,
           ...p,
-          currentTrack: null,
+          queue,
+          index,
+          // restore the selection but never auto-resume audio on cold start
+          currentTrack: index >= 0 ? queue[index] ?? null : null,
           isPlaying: false,
+          buffering: false,
+          error: null,
           positionSec: 0,
           durationSec: 0,
           sleepTimerEndsAt: null,

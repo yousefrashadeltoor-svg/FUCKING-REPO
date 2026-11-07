@@ -1,13 +1,42 @@
 {
   "name": "DON MUSE",
   "short_name": "DON MUSE",
-  "description": "Music · Radio · TV · Downloads — by Joseph M.R",
+  "description": "Music · Radio · TV · Quran · Your device library — DON MUSE",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#030304",
-  "theme_color": "#030304",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": [
+    "music",
+    "entertainment"
+  ],
+  "orientation": "portrait",
+  "shortcuts": [
+    {
+      "name": "موسيقاي",
+      "url": "/my-music"
+    },
+    {
+      "name": "القرآن",
+      "url": "/quran"
+    },
+    {
+      "name": "البث",
+      "url": "/radio"
+    }
   ]
 }

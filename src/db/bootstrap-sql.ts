@@ -103,5 +103,5 @@ export const SCHEMA_SQL: string[] = [
   "DO $$ BEGIN ALTER TABLE ONLY public.tracks ADD CONSTRAINT tracks_artist_id_artists_id_fk FOREIGN KEY (artist_id) REFERENCES public.artists(id) ON DELETE CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$",
   "DO $$ BEGIN ALTER TABLE ONLY public.user_track_likes ADD CONSTRAINT user_track_likes_track_id_tracks_id_fk FOREIGN KEY (track_id) REFERENCES public.tracks(id) ON DELETE CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$",
   "DO $$ BEGIN ALTER TABLE ONLY public.user_track_likes ADD CONSTRAINT user_track_likes_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$",
-  "INSERT INTO users (email, name, avatar_url, tier) VALUES ('demo@aura.fm','DON MUSE Listener','/logo.png','ultimate') ON CONFLICT (email) DO NOTHING"
+  "INSERT INTO users (email, name, avatar_url, tier) VALUES ('demo@aura.fm','DON MUSE Listener','/logo.svg','ultimate') ON CONFLICT (email) DO NOTHING"
 ];

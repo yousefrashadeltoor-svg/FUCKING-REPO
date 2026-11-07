@@ -70,6 +70,14 @@ const en = {
   audioQuality: "Audio quality", qAuto: "Auto", qAutoDesc: "Adapts to your connection", qLow: "Low · data saver", qLowDesc: "Medium video quality on YouTube",
   qHigh: "High", qHighDesc: "1080p on YouTube · 320 kbps audio", qLossless: "Maximum", qLosslessDesc: "Highest available on every source",
   appearance: "Appearance", accentColor: "Accent color", accentDesc: "Drives buttons, sliders and the ambient glow", density: "Layout density",
+  themeLabel: "Theme", themeDesc: "Full palettes — every one is contrast-checked", motion: "Motion",
+  motionDesc: "Reduced effects for older devices", highRefresh: "High refresh",
+  highRefreshDesc: "Target the display's max frame rate (120/144/240 Hz)", haptics: "Haptics",
+  hapticsDesc: "Small vibration on tap (Android)", backgroundPlayback: "Background playback",
+  backgroundPlaybackDesc: "Keep playing after leaving the app", autoOffline: "Offline → My Music",
+  autoOfflineDesc: "Open your device library automatically when there is no connection",
+  lowData: "Data saver", lowDataDesc: "Prefer lower bitrates on metered connections",
+
   compact: "Compact", comfortable: "Comfortable", spacious: "Spacious", language: "Language", interfaceLang: "Interface language",
   interfaceLangDesc: "RTL layout for Arabic and Urdu", custom: "Custom (from EQ panel)",
   shortcuts: "Keyboard: Space play/pause · ←/→ seek · Shift+←/→ prev/next · ↑/↓ volume · M mute · L like · S shuffle · R repeat",
@@ -88,7 +96,7 @@ const en = {
   remainingPlays: "plays left",
   // developer
   developer: "Developer", developerTitle: "About the developer", developerSub: "DON MUSE is designed and built by",
-  developerQuote: "“Every dog has his day.” — Tony Montana", version: "Version", builtWith: "Built with", contact: "Contact",
+  version: "Version", builtWith: "Built with", contact: "Contact",
   offlineReady: "Offline-ready UI · works without internet except streaming & downloads",
   // playbar more
   playbackMode: "Playback mode", openDeveloper: "About DON MUSE",
@@ -115,10 +123,62 @@ const en = {
   nowPlayingBig: "Now Playing", expand: "Expand", clipFormat: "Clip format",
   shortcutsTitle: "Keyboard Shortcuts",
   tabSingles: "Singles & EPs", tabLive: "Live", officialAccount: "Official account", monthlyAudience: "monthly audience", subscribers: "subscribers", totalViews: "total views", openOnPlatform: "Open official channel", officialNote: "Profile, numbers and catalog come from the artist's official account on the platform — not from this app.",
+
+  // --- new: my music (device library) ---
+  myMusic: "My Music", myMusicSub: "Songs, videos, albums and artists that already live on this device — played from where they are, never copied.",
+  myMusicNeedsApp: "Direct device access is available in the DON MUSE Android app. On the web you can still open local files from here.",
+  myMusicSongs: "Songs", myMusicVideos: "Videos", myMusicArtists: "Artists", myMusicAlbums: "Albums", myMusicPlaylists: "Playlists",
+  myMusicScan: "Scan device", myMusicScanning: "Scanning your device…", myMusicEmpty: "No media found yet.",
+  myMusicPermission: "Allow access to your media to browse this device.",
+  myMusicGrant: "Grant access", myMusicOpenFiles: "Open files from this device",
+  myMusicRename: "Rename", myMusicEditTags: "Edit info", myMusicSetArt: "Change cover",
+  myMusicCreatePlaylist: "New playlist from this song", myMusicAddTo: "Add to playlist",
+  myMusicApplyToFile: "Apply to the original file", myMusicSavedFile: "Saved to the file on this device",
+  myMusicShuffleAll: "Shuffle all", myMusicSearch: "Search your device…",
+  // --- new: following tab ---
+  followingTab: "Following", followingTabSub: "Every artist and profile you follow, in one place.",
+  followingEmpty: "You don't follow anyone yet. Open an artist and tap Follow.",
+  followingProfiles: "Profiles across platforms", followingArtists: "Artists",
+  // --- new: YouTube profile ---
+  ytProfile: "My YouTube profile", ytProfileSub: "Your real YouTube Music account — sign in with Google.",
+  ytConnect: "Sign in with Google", ytDisconnect: "Sign out", ytConnected: "Connected",
+  ytNotConfigured: "YouTube sign-in is not configured on this deployment. Add GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET and YOUTUBE_API_KEY to enable it.",
+  ytNeedsKey: "Add a YouTube Data API key to read your subscriptions and playlists.",
+  ytSubscriptions: "Subscriptions", ytPlaylists: "Playlists", ytLikedMusic: "Liked music", ytHistory: "Recent activity",
+  ytRecommendations: "Made for you", ytAccount: "Account", ytEditProfile: "Edit profile",
+  ytEditNote: "Profile edits are applied through your Google account where the official API allows it.",
+  ytSignInRequired: "Sign in to see your account data",
+  // --- new: playback / player ---
+  clearPlayer: "Stop and clear player", playingFrom: "Playing from", errorPlayback: "Playback error",
+  retry: "Retry", speedUp: "Faster", slowDown: "Slower", miniPlayer: "Mini player",
+  dragDownToClose: "Drag down to close", swipeUp: "Swipe up for the queue",
+  nowPlayingQueue: "Up next", closeAll: "Close", noTrackSelected: "Nothing selected",
+  // --- new: TV taxonomy ---
+  tvEgyptianTv: "Egyptian TV", tvArabicTv: "Arabic TV", tvInternational: "International",
+  tvEgyptianChannels: "Channels broadcast in Egypt", tvArabicChannels: "Channels from the Arab world",
+  tvReligious: "Religious", tvEntertainment: "Entertainment", tvEducation: "Education",
+  tvKidsCartoon: "Kids & Cartoon", tvMoviesSeries: "Movies & Series", tvAllChannels: "All channels",
+  tvSubcategories: "Categories", tvBackToMain: "Back to main sections", tvPlay: "Watch",
+  // --- new: diagnostics ---
+  diagnostics: "Diagnostics", diagnosticsSub: "Live performance, playback and network health.",
+  diagPlatform: "Platform", diagFps: "Frame rate", diagMemory: "Memory", diagNetwork: "Network",
+  diagAudioEngine: "Audio engine", diagCache: "Cache", diagClearCache: "Clear cache",
+  diagRunTests: "Run self-test", diagAllGood: "All checks passed", diagIssues: "issues found",
+  diagBandwidth: "Data used", diagLatency: "Latency", diagQueue: "Queue length",
+  // --- new: connection ---
+  offlineMode: "You're offline — showing My Music", backOnline: "Back online", reconnected: "Connection restored",
+  offlineBanner: "No internet connection · device library works", tryAgain: "Try again",
+  // --- new: YouTube profile (extra) ---
+  ytRealDataOnly: "All data comes straight from your Google account — nothing is simulated.",
+  ytEditSupported: "Editing where YouTube officially allows it",
+  // --- new: health ---
+  healthTitle: "System health", healthDb: "Database", healthSources: "Content sources",
+  healthCheck: "Check now", healthy: "Healthy", degraded: "Degraded", down: "Down",
 } as const;
 
 export type DictKey = keyof typeof en;
 type Dict = Record<DictKey, string>;
+type DictPatch = Partial<Dict>;
 
 const ar: Dict = {
   home: "الرئيسية", search: "بحث", library: "المكتبة", radio: "الراديو", ai: "DON AI", settings: "الإعدادات",
@@ -173,6 +233,14 @@ const ar: Dict = {
   audioQuality: "جودة الصوت", qAuto: "تلقائي", qAutoDesc: "يتكيف مع سرعة اتصالك", qLow: "منخفضة · توفير البيانات", qLowDesc: "جودة متوسطة على يوتيوب",
   qHigh: "عالية", qHighDesc: "1080p على يوتيوب · صوت 320 kbps", qLossless: "القصوى", qLosslessDesc: "أعلى جودة متاحة من كل مصدر",
   appearance: "المظهر", accentColor: "لون التمييز", accentDesc: "يتحكم في الأزرار والمنزلقات والتوهج", density: "كثافة الواجهة",
+  themeLabel: "المظهر", themeDesc: "لوحات ألوان كاملة — كل واحدة مُختبرة للتباين", motion: "الحركة",
+  motionDesc: "تقليل التأثيرات للأجهزة الأقدم", highRefresh: "معدل تحديث عالٍ",
+  highRefreshDesc: "استهدف أقصى معدل للشاشة (120/144/240 هرتز)", haptics: "الاهتزاز",
+  hapticsDesc: "اهتزاز خفيف عند اللمس (أندرويد)", backgroundPlayback: "التشغيل في الخلفية",
+  backgroundPlaybackDesc: "استمرار التشغيل بعد مغادرة التطبيق", autoOffline: "بدون اتصال ← موسيقاي",
+  autoOfflineDesc: "افتح مكتبة جهازك تلقائيًا عند انقطاع الاتصال",
+  lowData: "توفير البيانات", lowDataDesc: "تفضيل جودات أقل على الشبكات المحدودة",
+
   compact: "مضغوط", comfortable: "مريح", spacious: "واسع", language: "اللغة", interfaceLang: "لغة الواجهة",
   interfaceLangDesc: "تخطيط من اليمين لليسار للعربية والأردية", custom: "مخصص (من لوحة المعادل)",
   shortcuts: "الاختصارات: مسافة تشغيل/إيقاف · ←/→ تقديم · Shift+←/→ السابق/التالي · ↑/↓ الصوت · M كتم · L إعجاب · S عشوائي · R تكرار",
@@ -186,7 +254,7 @@ const ar: Dict = {
   repeatOff: "بدون تكرار", repeatAll: "تكرار الكل", repeatOne: "تكرار واحدة", repeatTimes: "تكرار ×", customMinutes: "دقائق مخصصة…", set: "ضبط",
   remainingPlays: "مرات متبقية",
   developer: "المطوّر", developerTitle: "عن المطوّر", developerSub: "صمّم وبنى DON MUSE",
-  developerQuote: "«لكل كلب يومه.» — توني مونتانا", version: "الإصدار", builtWith: "مبني بـ", contact: "تواصل",
+  version: "الإصدار", builtWith: "مبني بـ", contact: "تواصل",
   offlineReady: "واجهة تعمل بلا إنترنت · لا يلزم الاتصال إلا للبث والتحميل",
   playbackMode: "وضع التشغيل", openDeveloper: "عن DON MUSE",
   follow: "متابعة", following: "متابَع", followers: "متابع", unfollow: "إلغاء المتابعة", followedToast: "تتابع الآن", unfollowedToast: "تم إلغاء المتابعة",
@@ -211,9 +279,50 @@ const ar: Dict = {
   nowPlayingBig: "يعزف الآن", expand: "توسيع", clipFormat: "صيغة المقطع",
   shortcutsTitle: "اختصارات لوحة المفاتيح",
   tabSingles: "سينجلز و EP", tabLive: "حفلات مباشرة", officialAccount: "الحساب الرسمي", monthlyAudience: "مستمع شهريًا", subscribers: "مشترك", totalViews: "إجمالي المشاهدات", openOnPlatform: "افتح القناة الرسمية", officialNote: "الملف والأرقام والكتالوج من الحساب الرسمي للفنان على المنصة — وليس من هذا التطبيق.",
+  myMusic: "موسيقاي", myMusicSub: "أغانٍ وفيديوهات وألبومات وفنانون موجودون فعلًا على جهازك — تُشغَّل من مكانها ولا تُنسخ.",
+  myMusicNeedsApp: "الوصول المباشر لملفات الجهاز متاح في تطبيق DON MUSE على أندرويد. على الويب يمكنك فتح ملفات من جهازك من هنا.",
+  myMusicSongs: "الأغاني", myMusicVideos: "الفيديوهات", myMusicArtists: "الفنانون", myMusicAlbums: "الألبومات", myMusicPlaylists: "قوائم التشغيل",
+  myMusicScan: "فحص الجهاز", myMusicScanning: "جارٍ فحص جهازك…", myMusicEmpty: "لم يتم العثور على وسائط بعد.",
+  myMusicPermission: "اسمح بالوصول إلى الوسائط لتصفح جهازك.", myMusicGrant: "منح الصلاحية",
+  myMusicOpenFiles: "افتح ملفات من هذا الجهاز", myMusicRename: "إعادة تسمية", myMusicEditTags: "تعديل المعلومات",
+  myMusicSetArt: "تغيير الغلاف", myMusicCreatePlaylist: "قائمة جديدة من هذه الأغنية", myMusicAddTo: "أضف إلى قائمة",
+  myMusicApplyToFile: "طبّق على الملف الأصلي", myMusicSavedFile: "تم الحفظ في الملف على جهازك",
+  myMusicShuffleAll: "تشغيل الكل عشوائيًا", myMusicSearch: "ابحث في جهازك…",
+  followingTab: "المتابعات", followingTabSub: "كل الفنانين والملفات الشخصية التي تتابعها في مكان واحد.",
+  followingEmpty: "لا تتابع أحدًا بعد. افتح فنانًا واضغط «متابعة».",
+  followingProfiles: "ملفات شخصية عبر المنصات", followingArtists: "الفنانون",
+  ytProfile: "ملفي الشخصي على YouTube", ytProfileSub: "حسابك الحقيقي على YouTube Music — سجّل الدخول عبر Google.",
+  ytConnect: "تسجيل الدخول بـ Google", ytDisconnect: "تسجيل الخروج", ytConnected: "متصل",
+  ytNotConfigured: "تسجيل الدخول إلى YouTube غير مُهيّأ على هذا النشر. أضف GOOGLE_CLIENT_ID وGOOGLE_CLIENT_SECRET وYOUTUBE_API_KEY لتفعيله.",
+  ytNeedsKey: "أضف مفتاح YouTube Data API لقراءة اشتراكاتك وقوائمك.",
+  ytSubscriptions: "الاشتراكات", ytPlaylists: "قوائم التشغيل", ytLikedMusic: "الموسيقى المعجب بها", ytHistory: "النشاط الأخير",
+  ytRecommendations: "مقترح لك", ytAccount: "الحساب", ytEditProfile: "تعديل الملف",
+  ytEditNote: "تُطبَّق تعديلات الملف عبر حسابك في Google حيثما تسمح الواجهة الرسمية بذلك.",
+  ytSignInRequired: "سجّل الدخول لعرض بيانات حسابك",
+  clearPlayer: "إيقاف وإغلاق المشغّل", playingFrom: "يُشغَّل من", errorPlayback: "خطأ في التشغيل",
+  retry: "إعادة المحاولة", speedUp: "أسرع", slowDown: "أبطأ", miniPlayer: "المشغّل المصغّر",
+  dragDownToClose: "اسحب للأسفل للإغلاق", swipeUp: "اسحب لأعلى لقائمة الانتظار",
+  nowPlayingQueue: "التالي", closeAll: "إغلاق", noTrackSelected: "لا شيء محدد",
+  tvEgyptianTv: "التلفزيون المصري", tvArabicTv: "التلفزيون العربي", tvInternational: "قنوات عالمية",
+  tvEgyptianChannels: "قنوات تُبث في مصر", tvArabicChannels: "قنوات من العالم العربي",
+  tvReligious: "قنوات دينية", tvEntertainment: "قنوات ترفيهية", tvEducation: "قنوات تعليمية",
+  tvKidsCartoon: "أطفال وكرتون", tvMoviesSeries: "أفلام ومسلسلات", tvAllChannels: "كل القنوات",
+  tvSubcategories: "الأقسام", tvBackToMain: "رجوع إلى الأقسام الرئيسية", tvPlay: "مشاهدة",
+  diagnostics: "التشخيصات", diagnosticsSub: "الأداء والتشغيل وصحة الشبكة مباشرةً.",
+  diagPlatform: "المنصة", diagFps: "معدل الإطارات", diagMemory: "الذاكرة", diagNetwork: "الشبكة",
+  diagAudioEngine: "محرك الصوت", diagCache: "الذاكرة المؤقتة", diagClearCache: "مسح الذاكرة المؤقتة",
+  diagRunTests: "فحص ذاتي", diagAllGood: "كل الفحوصات ناجحة", diagIssues: "مشكلات",
+  diagBandwidth: "البيانات المستهلكة", diagLatency: "زمن الاستجابة", diagQueue: "طول القائمة",
+  offlineMode: "أنت غير متصل — نعرض «موسيقاي»", backOnline: "عاد الاتصال", reconnected: "تمت استعادة الاتصال",
+  ytRealDataOnly: "كل البيانات تأتي من حساب Google الخاص بك مباشرةً — لا شيء مُختلق.",
+  ytEditSupported: "التعديل متاح حيث يسمح YouTube رسميًا",
+  healthTitle: "صحة النظام", healthDb: "قاعدة البيانات", healthSources: "مصادر المحتوى",
+  healthCheck: "افحص الآن", healthy: "سليم", degraded: "متذبذب", down: "متوقف",
+  offlineBanner: "لا يوجد اتصال بالإنترنت · مكتبة الجهاز تعمل", tryAgain: "حاول مرة أخرى",
+
 };
 
-const fr: Dict = {
+const fr: DictPatch = {
   ...en,
   home: "Accueil", search: "Recherche", library: "Bibliothèque", radio: "Radio", settings: "Réglages",
   yourLibrary: "Votre bibliothèque", newPlaylist: "Nouvelle playlist", likedTracks: "Titres aimés", collapse: "Réduire",
@@ -246,7 +355,7 @@ const fr: Dict = {
   arabicStations: "Monde arabe", quranStations: "Coran & islamique", cultureStations: "Culture · Classique · Jazz",
   repeatOff: "Sans répétition", repeatAll: "Tout répéter", repeatOne: "Répéter une fois", repeatTimes: "Répéter ×", customMinutes: "Minutes…", set: "OK",
   remainingPlays: "restantes", developer: "Développeur", developerTitle: "À propos du développeur", developerSub: "DON MUSE est conçu et développé par",
-  developerQuote: "« Chaque chien a son jour. » — Tony Montana", version: "Version", builtWith: "Construit avec", contact: "Contact",
+  version: "Version", builtWith: "Construit avec", contact: "Contact",
   offlineReady: "Interface hors-ligne · internet requis seulement pour lire et télécharger", playbackMode: "Mode de lecture", openDeveloper: "À propos",
   follow: "Suivre", following: "Suivi", followers: "abonnés", unfollow: "Ne plus suivre", followedToast: "Vous suivez", unfollowedToast: "Désabonné",
   tabTop: "Populaires", tabAlbums: "Albums", tabCollabs: "Avec des artistes", tabVideos: "Vidéos", tabRelated: "Les fans aiment aussi",
@@ -261,7 +370,7 @@ const fr: Dict = {
   tabSingles: "Singles & EP", tabLive: "Live", officialAccount: "Compte officiel", monthlyAudience: "auditeurs mensuels", subscribers: "abonnés", totalViews: "vues totales", openOnPlatform: "Ouvrir la chaîne officielle", officialNote: "Profil, chiffres et catalogue proviennent du compte officiel de l'artiste.",
 };
 
-const es: Dict = {
+const es: DictPatch = {
   ...en,
   home: "Inicio", search: "Buscar", library: "Biblioteca", radio: "Radio", settings: "Ajustes",
   yourLibrary: "Tu biblioteca", newPlaylist: "Nueva playlist", likedTracks: "Me gusta", collapse: "Contraer",
@@ -294,7 +403,7 @@ const es: Dict = {
   arabicStations: "Mundo árabe", quranStations: "Corán e islámicas", cultureStations: "Cultura · Clásica · Jazz",
   repeatOff: "Sin repetir", repeatAll: "Repetir todo", repeatOne: "Repetir una", repeatTimes: "Repetir ×", customMinutes: "Minutos…", set: "OK",
   remainingPlays: "restantes", developer: "Desarrollador", developerTitle: "Sobre el desarrollador", developerSub: "DON MUSE está diseñado y creado por",
-  developerQuote: "«Cada perro tiene su día.» — Tony Montana", version: "Versión", builtWith: "Hecho con", contact: "Contacto",
+  version: "Versión", builtWith: "Hecho con", contact: "Contacto",
   offlineReady: "Interfaz sin conexión · internet solo para reproducir y descargar", playbackMode: "Modo de reproducción", openDeveloper: "Acerca de",
   follow: "Seguir", following: "Siguiendo", followers: "seguidores", unfollow: "Dejar de seguir", followedToast: "Ahora sigues", unfollowedToast: "Dejaste de seguir",
   tabTop: "Populares", tabAlbums: "Álbumes", tabCollabs: "Con artistas", tabVideos: "Vídeos", tabRelated: "A los fans también les gusta",
@@ -309,7 +418,7 @@ const es: Dict = {
   tabSingles: "Sencillos y EP", tabLive: "En vivo", officialAccount: "Cuenta oficial", monthlyAudience: "oyentes mensuales", subscribers: "suscriptores", totalViews: "vistas totales", openOnPlatform: "Abrir canal oficial", officialNote: "Perfil, cifras y catálogo provienen de la cuenta oficial del artista.",
 };
 
-const tr: Dict = {
+const tr: DictPatch = {
   ...en,
   home: "Ana Sayfa", search: "Ara", library: "Kütüphane", radio: "Radyo", settings: "Ayarlar",
   yourLibrary: "Kütüphanen", newPlaylist: "Yeni liste", likedTracks: "Beğenilenler", collapse: "Daralt",
@@ -342,7 +451,7 @@ const tr: Dict = {
   arabicStations: "Arap dünyası", quranStations: "Kur'an ve İslami", cultureStations: "Kültür · Klasik · Caz",
   repeatOff: "Tekrar kapalı", repeatAll: "Tümünü tekrarla", repeatOne: "Birini tekrarla", repeatTimes: "Tekrar ×", customMinutes: "Dakika…", set: "Ayarla",
   remainingPlays: "kaldı", developer: "Geliştirici", developerTitle: "Geliştirici hakkında", developerSub: "DON MUSE'u tasarlayan ve geliştiren",
-  developerQuote: "“Her köpeğin bir günü vardır.” — Tony Montana", version: "Sürüm", builtWith: "Teknolojiler", contact: "İletişim",
+  version: "Sürüm", builtWith: "Teknolojiler", contact: "İletişim",
   offlineReady: "Çevrimdışı arayüz · internet yalnızca oynatma ve indirme için", playbackMode: "Oynatma modu", openDeveloper: "Hakkında",
   follow: "Takip et", following: "Takipte", followers: "takipçi", unfollow: "Takibi bırak", followedToast: "Takip ediliyor", unfollowedToast: "Takip bırakıldı",
   tabTop: "Popüler", tabAlbums: "Albümler", tabCollabs: "Sanatçılarla", tabVideos: "Videolar", tabRelated: "Hayranlar bunları da sever",
@@ -357,7 +466,7 @@ const tr: Dict = {
   tabSingles: "Single & EP", tabLive: "Canlı", officialAccount: "Resmi hesap", monthlyAudience: "aylık dinleyici", subscribers: "abone", totalViews: "toplam görüntülenme", openOnPlatform: "Resmi kanalı aç", officialNote: "Profil, sayılar ve katalog sanatçının resmi hesabından gelir.",
 };
 
-const ur: Dict = {
+const ur: DictPatch = {
   ...ar,
   home: "ہوم", search: "تلاش", library: "لائبریری", radio: "ریڈیو", settings: "ترتیبات",
   yourLibrary: "آپ کی لائبریری", newPlaylist: "نئی پلے لسٹ", likedTracks: "پسندیدہ", collapse: "سمیٹیں",
@@ -380,7 +489,7 @@ const ur: Dict = {
   arabicStations: "عرب دنیا", quranStations: "قرآن و اسلامی", cultureStations: "ثقافت · کلاسیکی · جاز",
   repeatOff: "دہرائی بند", repeatAll: "سب دہرائیں", repeatOne: "ایک دہرائیں", repeatTimes: "دہرائیں ×", customMinutes: "منٹ…", set: "سیٹ",
   remainingPlays: "باقی", developer: "ڈویلپر", developerTitle: "ڈویلپر کے بارے میں", developerSub: "DON MUSE کو ڈیزائن اور تیار کیا",
-  developerQuote: "«ہر کتے کا دن آتا ہے۔» — ٹونی مونٹانا", version: "ورژن", builtWith: "بنایا گیا", contact: "رابطہ",
+  version: "ورژن", builtWith: "بنایا گیا", contact: "رابطہ",
   offlineReady: "آف لائن انٹرفیس · انٹرنیٹ صرف چلانے اور ڈاؤن لوڈ کے لیے", playbackMode: "پلے بیک موڈ", openDeveloper: "کے بارے میں",
   follow: "فالو", following: "فالو کیا", followers: "فالوورز", unfollow: "ان فالو", followedToast: "اب فالو کر رہے ہیں", unfollowedToast: "ان فالو",
   tabTop: "مقبول", tabAlbums: "البمز", tabCollabs: "فنکاروں کے ساتھ", tabVideos: "ویڈیوز", tabRelated: "مداح یہ بھی پسند کرتے ہیں",
@@ -394,10 +503,17 @@ const ur: Dict = {
   tabSingles: "سنگلز", tabLive: "لائیو", officialAccount: "سرکاری اکاؤنٹ", monthlyAudience: "ماہانہ سامعین", subscribers: "سبسکرائبرز", totalViews: "کل ویوز", openOnPlatform: "سرکاری چینل کھولیں", officialNote: "پروفائل اور اعداد و شمار فنکار کے سرکاری اکاؤنٹ سے ہیں۔",
 };
 
-const dict: Record<Lang, Dict> = { en, ar, fr, es, tr, ur };
+const merged: Record<Lang, Dict> = {
+  en,
+  ar: { ...en, ...ar },
+  fr: { ...en, ...fr },
+  es: { ...en, ...es },
+  tr: { ...en, ...tr },
+  ur: { ...en, ...ur },
+};
 
 export function t(key: DictKey, lang: string): string {
-  const d = dict[lang as Lang] ?? en;
+  const d = merged[lang as Lang] ?? en;
   return d[key] ?? en[key] ?? key;
 }
 

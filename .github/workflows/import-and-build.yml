@@ -22,51 +22,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Import the original ZIP only when source is not yet unpacked
+      # The original source archive is no longer tracked (the code is the source
+      # of truth now); this step only keeps the ignore rules in sync.
+      - name: Ensure ignore rules
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f package.json ]; then
-            echo "Application source is already present; preserving tracked changes."
-          else
-            archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
-            test -n "$archive"
-            work="$RUNNER_TEMP/don-muse-import"
-            mkdir -p "$work"
-            unzip -q "$archive" -d "$work"
-            test -f "$work/package.json"
-            rsync -a "$work/" ./ \
-              --exclude='.git/' \
-              --exclude='node_modules/' \
-              --exclude='.next/' \
-              --exclude='dist/' \
-              --exclude='coverage/' \
-              --exclude='.cache/' \
-              --exclude='.gradle/' \
-              --exclude='android/.gradle/' \
-              --exclude='android/app/build/' \
-              --exclude='android/local.properties' \
-              --exclude='android/.github/'
-          fi
           rm -rf android/.gradle android/app/build android/local.properties 2>/dev/null || true
-          cat > .gitignore <<'EOF'
-          node_modules/
-          .next/
-          dist/
-          coverage/
-          .cache/
-          /data/
-          .env
-          .env.*
-          !.env.example
-          !.env.sample
-          !.env.template
-          android/.gradle/
-          android/local.properties
-          android/app/build/
-          android/*.jks
-          android/*.keystore
-          EOF
+          python3 - <<'PYEOF'
+import pathlib
+extra = """
+# build + export artefacts
+out/
+tsconfig.tsbuildinfo
+android/.idea/
+android/*.jks
+android/app/src/main/assets/www/
+"""
+p = pathlib.Path(".gitignore")
+s = p.read_text()
+for line in extra.strip().splitlines():
+    if line.strip() and line not in s:
+        s += line + "\n"
+p.write_text(s)
+PYEOF
 
       - name: Apply reviewed playback, UI, and Android fixes
         shell: bash

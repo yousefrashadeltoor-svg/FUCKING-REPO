@@ -144,6 +144,51 @@ export const FEATURED_IDS = [
   "Bloomberg.us", "CNBC.us", "RedBullTV.at", "NASATV.us", "ArteDeutsch.de", "Mezzo.fr",
 ];
 
+/** Fine-grained categories used by the TV taxonomy (main → sub). */
+export const TV_CATEGORIES = [
+  "religious",
+  "entertainment",
+  "news",
+  "sports",
+  "kids",
+  "movies",
+  "series",
+  "education",
+  "documentary",
+  "music",
+  "culture",
+] as const;
+export type TvCategory = (typeof TV_CATEGORIES)[number];
+
+/** Country groups for the main sections. */
+export const TV_GROUPS = ["egyptian", "arabic", "world"] as const;
+export type TvGroup = (typeof TV_GROUPS)[number];
+
+export function groupOf(c: TvChannelDTO): TvGroup {
+  if (c.country === "EG") return "egyptian";
+  if (ARAB_COUNTRIES.includes(c.country)) return "arabic";
+  return "world";
+}
+
+/** Which fine-grained categories does this channel belong to? */
+export function categoryOf(c: TvChannelDTO): TvCategory[] {
+  const out = new Set<TvCategory>();
+  const cats = c.categories;
+  const n = (c.name + " " + c.altNames.join(" ") + " " + c.id).toLowerCase();
+  if (cats.includes("religious") || /quran|qur'an|sunnah|makkah|madinah|iqraa|resalah|قرآن|القرآن|سنة|مكة|islam/.test(n)) out.add("religious");
+  if (cats.includes("news") || /news|akhbar|أخبار/.test(n)) out.add("news");
+  if (cats.includes("kids") || cats.includes("animation") || /cartoon|spacetoon|nick|baraem|jeem|toyor|majid|disney|kids|أطفال/.test(n)) out.add("kids");
+  if (cats.includes("movies") || /cinema|movie|aflam|film|سينما|أفلام/.test(n)) out.add("movies");
+  if (cats.includes("series") || /drama|series|مسلسل|دراما/.test(n)) out.add("series");
+  if (cats.includes("sports")) out.add("sports");
+  if (cats.includes("music") || /rotana|mazzika|music|موسيقى|طرب/.test(n)) out.add("music");
+  if (cats.includes("documentary") || cats.includes("science") || /geographic|discovery|nat ?geo|history|documentary|وثائقي/.test(n)) out.add("documentary");
+  if (cats.includes("education") || /edu|school|ta3lim|تعليم/.test(n)) out.add("education");
+  if (cats.includes("culture") || cats.includes("classic") || cats.includes("legislative") || /arte|mezzo|culture|ثقاف/.test(n)) out.add("culture");
+  if (cats.includes("entertainment") || cats.includes("general") || cats.includes("comedy") || /entertain|comedy|ترفيه/.test(n)) out.add("entertainment");
+  return [...out];
+}
+
 export function sectionOf(c: TvChannelDTO): string[] {
   const out: string[] = [];
   const cats = c.categories;

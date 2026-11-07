@@ -10,6 +10,10 @@ export interface UIState {
   searchOpen: boolean;
   nowPlayingOpen: boolean;
   shortcutsOpen: boolean;
+  /** mobile navigation drawer */
+  navOpen: boolean;
+  /** track info sheet (rendered ABOVE the now-playing layer) */
+  infoSheetOpen: boolean;
   setRightPanel: (open: boolean, tab?: RightPanelTab) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   toggleRightPanel: (tab?: RightPanelTab) => void;
@@ -19,6 +23,8 @@ export interface UIState {
   toggleNowPlaying: () => void;
   setShortcuts: (v: boolean) => void;
   toggleShortcuts: () => void;
+  setNavOpen: (v: boolean) => void;
+  setInfoSheet: (v: boolean) => void;
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -28,6 +34,8 @@ export const useUIStore = create<UIState>()((set) => ({
   searchOpen: false,
   nowPlayingOpen: false,
   shortcutsOpen: false,
+  navOpen: false,
+  infoSheetOpen: false,
   setRightPanel: (rightPanelOpen, tab) =>
     set((s) => ({ rightPanelOpen, rightPanelTab: tab ?? s.rightPanelTab })),
   setRightPanelTab: (rightPanelTab) => set({ rightPanelTab, rightPanelOpen: true }),
@@ -42,4 +50,6 @@ export const useUIStore = create<UIState>()((set) => ({
   toggleNowPlaying: () => set((s) => ({ nowPlayingOpen: !s.nowPlayingOpen })),
   setShortcuts: (shortcutsOpen) => set({ shortcutsOpen }),
   toggleShortcuts: () => set((s) => ({ shortcutsOpen: !s.shortcutsOpen })),
+  setNavOpen: (navOpen) => set({ navOpen }),
+  setInfoSheet: (infoSheetOpen) => set({ infoSheetOpen }),
 }));

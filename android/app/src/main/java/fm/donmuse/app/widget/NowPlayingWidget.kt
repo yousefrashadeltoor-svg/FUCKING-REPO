@@ -1,48 +1,28 @@
 package fm.donmuse.app.widget
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.widget.RemoteViews
-import fm.donmuse.app.MainActivity
-import fm.donmuse.app.R
-import fm.donmuse.app.playback.Playback
-import fm.donmuse.app.playback.PlaybackService
+import fm.donmuse.app.playback.NativePlayer
 
-/** Home-screen widget with full transport controls (prev / play-pause / next / stop). */
+/**
+ * 4×2 home-screen widget with the real transport controls.
+ * The buttons talk to the SAME ExoPlayer instance as the app + notification, so
+ * state never diverges.
+ */
 class NowPlayingWidget : AppWidgetProvider() {
-    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) {
-        for (id in ids) {
-            val v = RemoteViews(ctx.packageName, R.layout.widget_now_playing)
-            val p = PlaybackService.player
-            v.setTextViewText(R.id.w_title, p?.currentMediaItem?.mediaMetadata?.title ?: "DON MUSE")
-            v.setTextViewText(R.id.w_artist, p?.currentMediaItem?.mediaMetadata?.artist ?: "Tap to open")
-            v.setOnClickPendingIntent(R.id.w_play, action(ctx, ACTION_TOGGLE, 1))
-            v.setOnClickPendingIntent(R.id.w_next, action(ctx, ACTION_NEXT, 2))
-            v.setOnClickPendingIntent(R.id.w_prev, action(ctx, ACTION_PREV, 3))
-            v.setOnClickPendingIntent(R.id.w_stop, action(ctx, ACTION_STOP, 4))
-            val open = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-            v.setOnClickPendingIntent(R.id.w_title, open)
-            v.setOnClickPendingIntent(R.id.w_artist, open)
-            mgr.updateAppWidget(id, v)
-        }
-    }
-
-    private fun action(ctx: Context, a: String, code: Int): PendingIntent =
-        PendingIntent.getBroadcast(ctx, code, Intent(ctx, NowPlayingWidget::class.java).setAction(a), PendingIntent.FLAG_IMMUTABLE)
+    override fun onUpdate(ctx: Context, mgr: AppWidgetManager, ids: IntArray) = WidgetUpdater.refresh(ctx)
 
     override fun onReceive(ctx: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_TOGGLE -> Playback.toggle()
-            ACTION_NEXT -> Playback.next()
-            ACTION_PREV -> Playback.previous()
-            ACTION_STOP -> Playback.stop()
+            ACTION_TOGGLE -> NativePlayer.toggle()
+            ACTION_NEXT -> NativePlayer.next()
+            ACTION_PREV -> NativePlayer.previous()
+            ACTION_STOP -> NativePlayer.stop()
         }
-        val mgr = AppWidgetManager.getInstance(ctx)
-        onUpdate(ctx, mgr, mgr.getAppWidgetIds(ComponentName(ctx, NowPlayingWidget::class.java)))
+        WidgetUpdater.refresh(ctx)
+        super.onReceive(ctx, intent)
     }
 
     companion object {

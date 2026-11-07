@@ -1,245 +1,113 @@
 "use client";
 
 // ============================================================================
-//  DON MUSE — app providers
-//  Wires the UniversalPlaybackEngine to the Zustand player store, scrobbles
-//  plays to /api/history, drives the Media Session API (OS media controls),
-//  global keyboard shortcuts, sleep timer, and like-hydration.
+//  DON MUSE — Providers
+//  Wires the engine (one audio pipeline), the store, the native Android
+//  bridge, the Media Session (notification / lock screen / widgets), the
+//  network state, and global keyboard shortcuts.
 // ============================================================================
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "sonner";
+import { installMediaSessionHandlers, installPlaybackController } from "@/lib/audio/controller";
 import { getEngine } from "@/lib/audio/engine";
 import { usePlayerStore } from "@/stores/player-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { applyDocumentLang } from "@/lib/i18n";
-import { getTrackIdentity } from "@/lib/track-identity";
-import type { TrackDTO } from "@/lib/types";
-import { togglePlayNow } from "@/lib/player-actions";
+import { ACCENT_HEX, THEMES } from "@/stores/settings-store";
+import { isNativeHost } from "@/lib/platform/native";
+import { NetworkWatcher } from "@/components/layout/NetworkWatcher";
+import { NativeBridgeInit } from "@/components/layout/NativeBridgeInit";
+import { enterPlayerMode } from "@/lib/ui/anim";
+import { useUIStore } from "@/stores/ui-store";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
-  return (
-    tag === "INPUT" ||
-    tag === "TEXTAREA" ||
-    tag === "SELECT" ||
-    target.isContentEditable
-  );
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+}
+
+/** Applies theme + accent + density + motion profile to <html>. */
+function ThemeApplier() {
+  const theme = useSettingsStore((s) => s.theme);
+  const accent = useSettingsStore((s) => s.accent);
+  const density = useSettingsStore((s) => s.density);
+  const reduced = useSettingsStore((s) => s.reducedEffects);
+  const highRefresh = useSettingsStore((s) => s.highRefresh);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const t = THEMES[theme] ?? THEMES.midnight;
+    root.dataset.theme = theme;
+    root.style.setProperty("--app-bg", t.bg);
+    root.style.setProperty("--app-panel", t.panel);
+    root.style.setProperty("--app-text", t.text);
+    root.style.setProperty("--app-muted", t.muted);
+    root.style.setProperty("--app-border", t.border);
+    root.style.colorScheme = t.dark ? "dark" : "light";
+    root.dataset.density = density;
+    root.dataset.motion = reduced ? "reduced" : highRefresh ? "fast" : "normal";
+    const hex = ACCENT_HEX[accent];
+    root.style.setProperty("--app-accent", hex);
+    root.style.setProperty("--dynamic-primary", hex);
+    root.style.setProperty("--dynamic-glow", `${hex}40`);
+  }, [theme, accent, density, reduced, highRefresh]);
+
+  return null;
 }
 
 export function Providers({ children }: { children: ReactNode }) {
-  // ---- engine <-> store wiring (runs once) ----
+  /* ---------------- playback controller (engine ⇄ store) ---------------- */
   useEffect(() => {
-    const engine = getEngine();
-    const store = usePlayerStore.getState();
-
-    // Rehydrate the current track from the persisted queue (paused).
-    if (!store.currentTrack && store.queue.length > 0 && store.index >= 0) {
-      const restored = store.queue[store.index];
-      if (restored) {
-        usePlayerStore.setState({ currentTrack: restored, isPlaying: false });
-      }
-    }
-
-    const offTime = engine.on("timeupdate", (t) => {
-      usePlayerStore.getState().setPosition(Number(t));
-    });
-    const offDur = engine.on("durationchange", (d) => {
-      usePlayerStore.getState().setDuration(Number(d));
-    });
-    const offEnded = engine.on("ended", () => {
-      const s = usePlayerStore.getState();
-      if (s.repeatCount > 0 || s.repeat === "one") {
-        // replay the same track from 0 (works for YouTube + audio path)
-        s.next();
-        engine.seek(0);
-        void engine.play();
-        return;
-      }
-      if (useSettingsStore.getState().autoplay) s.next();
-      else s.setPlaying(false);
-    });
-    const offTrack = engine.on("trackchange", (t) => {
-      // Scrobble the play.
-      const track = t as Pick<TrackDTO, "id" | "source" | "sourceId"> | undefined;
-      if (track && track.id > 0 && track.source !== "radio") {
-        void fetch("/api/history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ trackId: track.id, durationListenedSec: 0 }),
-        }).catch(() => {});
-        // Fetch real lyrics (lyrics.ovh) and inject them into the store.
-        void fetch(`/api/tracks/${track.id}/lyrics`)
-          .then((r) => r.json())
-          .then((data: { lyrics?: { start: number; text: string }[] }) => {
-            const s = usePlayerStore.getState();
-            const currentTrack = s.currentTrack;
-            if (
-              currentTrack &&
-              data.lyrics &&
-              data.lyrics.length > 0 &&
-              getTrackIdentity(currentTrack) === getTrackIdentity(track)
-            ) {
-              usePlayerStore.setState({
-                currentTrack: { ...currentTrack, lyrics: data.lyrics },
-              });
-            }
-          })
-          .catch(() => {});
-      }
-      // Pre-buffer next track for gapless playback (audio path only).
-      const s = usePlayerStore.getState();
-      const upcoming = s.queue[s.index + 1];
-      if (upcoming && upcoming.source !== "youtube" && upcoming.source !== "radio" && upcoming.source !== "quran") engine.preload(upcoming.streamUrl);
-    });
-    const offErr = engine.on("error", (msg) => {
-      console.warn("[DON MUSE engine]", msg);
-    });
-
-    // keep engine settings in sync
-    const unsub = usePlayerStore.subscribe((s) => {
-      engine.setVolume(s.volume);
-      engine.setMuted(s.muted);
-      engine.setPlaybackRate(s.playbackRate);
-      engine.setCrossfade(s.crossfadeSec);
-      engine.setEq(s.eqBands);
-    });
-    const unsubSettings = useSettingsStore.subscribe((s) => {
-      engine.setLoudnessNormalization(s.loudnessNormalization);
-      engine.setQuality(s.quality);
-      engine.setEq(usePlayerStore.getState().eqBands);
-    });
-
-    // hydrate likes from the server once
-    void fetch("/api/likes")
-      .then((r) => r.json())
-      .then((tracks: { id: number }[]) => {
-        usePlayerStore.getState().hydrateLikes(tracks.map((t) => t.id));
-      })
-      .catch(() => {});
-
-    void store; // store snapshot retained for clarity
+    const teardown = installPlaybackController();
+    const offMedia = installMediaSessionHandlers();
+    document.documentElement.dataset.host = isNativeHost() ? "android" : "web";
     return () => {
-      offTime();
-      offDur();
-      offEnded();
-      offTrack();
-      offErr();
-      unsub();
-      unsubSettings();
+      teardown();
+      offMedia();
     };
   }, []);
 
-  // ---- load current track into the engine whenever it changes ----
-  const trackKey = usePlayerStore((s) => getTrackIdentity(s.currentTrack));
-  const isPlaying = usePlayerStore((s) => s.isPlaying);
-  useEffect(() => {
-    const track = usePlayerStore.getState().currentTrack;
-    if (!track) return;
-    const engine = getEngine();
-    const playing = usePlayerStore.getState().isPlaying;
-    void engine.load(track, { autoplay: playing, crossfade: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackKey]);
-
-  // ---- play / pause ----
-  useEffect(() => {
-    const engine = getEngine();
-    const track = usePlayerStore.getState().currentTrack;
-    if (!track) return;
-    if (isPlaying) void engine.play();
-    else engine.pause();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, trackKey]);
-
-  // ---- seek (user scrub) ----
-  const positionSec = usePlayerStore((s) => s.positionSec);
-  useEffect(() => {
-    const engine = getEngine();
-    if (Math.abs(engine.position - positionSec) > 1.5) {
-      engine.seek(positionSec);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positionSec]);
-
-  // ---- sleep timer ----
-  const sleepTimerEndsAt = usePlayerStore((s) => s.sleepTimerEndsAt);
-  useEffect(() => {
-    const engine = getEngine();
-    if (sleepTimerEndsAt) engine.startSleepTimer(sleepTimerEndsAt, 30);
-    else engine.cancelSleepTimer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sleepTimerEndsAt]);
-
-  // ---- periodic scrobble while playing (every 20s) ----
-  useEffect(() => {
-    const iv = setInterval(() => {
-      const s = usePlayerStore.getState();
-      if (s.isPlaying && s.currentTrack && s.currentTrack.id > 0 && s.currentTrack.source !== "radio") {
-        void fetch("/api/history", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ trackId: s.currentTrack.id, durationListenedSec: 20 }),
-        }).catch(() => {});
-      }
-    }, 20_000);
-    return () => clearInterval(iv);
-  }, []);
-
-  // ---- Media Session API (OS-level controls) ----
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    const update = () => {
-      const s = usePlayerStore.getState();
-      const t = s.currentTrack;
-      if (!t) return;
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: t.title,
-        artist: t.artistName,
-        album: t.albumTitle ?? "DON MUSE",
-        artwork: t.coverUrl
-          ? [{ src: t.coverUrl, sizes: "512x512", type: "image/jpeg" }]
-          : [],
-      });
-      navigator.mediaSession.playbackState = s.isPlaying ? "playing" : "paused";
-    };
-    update();
-    const unsub = usePlayerStore.subscribe(update);
-
-    const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-      ["play", () => usePlayerStore.getState().setPlaying(true)],
-      ["pause", () => usePlayerStore.getState().setPlaying(false)],
-      ["previoustrack", () => usePlayerStore.getState().prev()],
-      ["nexttrack", () => usePlayerStore.getState().next()],
-      ["seekbackward", () => usePlayerStore.getState().seek(usePlayerStore.getState().positionSec - 10)],
-      ["seekforward", () => usePlayerStore.getState().seek(usePlayerStore.getState().positionSec + 10)],
-      ["seekto", (d) => { if (d?.seekTime) usePlayerStore.getState().seek(d.seekTime); }],
-    ];
-    for (const [action, handler] of handlers) {
-      try {
-        navigator.mediaSession.setActionHandler(action, handler);
-      } catch {
-        /* unsupported action */
-      }
-    }
-    return () => unsub();
-  }, []);
-
-  // ---- document language + direction (RTL for ar/ur) ----
+  /* ---------------- document language / direction ---------------- */
   const language = useSettingsStore((s) => s.language);
   useEffect(() => {
     applyDocumentLang(language);
   }, [language]);
 
-  // ---- global keyboard shortcuts ----
+  /* ---------------- hydrate likes from the server once ---------------- */
+  useEffect(() => {
+    void fetch("/api/likes")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((tracks: { id: number }[]) => {
+        if (Array.isArray(tracks)) usePlayerStore.getState().hydrateLikes(tracks.map((t) => t.id));
+      })
+      .catch(() => {});
+  }, []);
+
+  /* ---------------- periodic scrobble while playing ---------------- */
+  useEffect(() => {
+    const iv = setInterval(() => {
+      const s = usePlayerStore.getState();
+      if (!s.isPlaying || !s.currentTrack) return;
+      const t = s.currentTrack;
+      if (t.id <= 0 || t.source === "radio" || t.source === "quran" || t.source === "local") return;
+      void fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trackId: t.id, durationListenedSec: 20 }),
+      }).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(iv);
+  }, []);
+
+  /* ---------------- global keyboard shortcuts ---------------- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const s = usePlayerStore.getState();
       switch (e.code) {
         case "Space":
           e.preventDefault();
-          togglePlayNow();
+          s.togglePlay();
           break;
         case "ArrowRight":
           if (e.shiftKey) s.next();
@@ -277,18 +145,70 @@ export function Providers({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /* ---------------- paint budget hint (progressive enhancement) ---------------- */
+  useEffect(() => {
+    enterPlayerMode();
+  }, []);
+
+  /* ---------------- Android hardware back button ---------------- */
+  useEffect(() => {
+    // The native shell calls this first: closing a sheet beats leaving the app.
+    const w = window as Window & {
+      __donmuseBack?: () => boolean;
+      __donmuseResync?: () => void;
+    };
+    w.__donmuseBack = () => {
+      const ui = useUIStore.getState();
+      if (ui.infoSheetOpen) {
+        ui.setInfoSheet(false);
+        return true;
+      }
+      if (ui.nowPlayingOpen) {
+        ui.setNowPlaying(false);
+        return true;
+      }
+      if (ui.searchOpen) {
+        ui.setSearchOpen(false);
+        return true;
+      }
+      if (ui.navOpen) {
+        ui.setNavOpen(false);
+        return true;
+      }
+      return false;
+    };
+    w.__donmuseResync = () => {
+      const s = usePlayerStore.getState();
+      if (!s.currentTrack) return;
+      // Ask the real player, never a cached guess.
+      const engine = getEngine();
+      s.setPlaying(engine.isPlaying);
+      if (engine.duration > 0) s.setDuration(engine.duration);
+      s.setPosition(engine.position);
+    };
+    return () => {
+      delete w.__donmuseBack;
+      delete w.__donmuseResync;
+    };
+  }, []);
+
   return (
     <>
+      <ThemeApplier />
+      <NativeBridgeInit />
+      <NetworkWatcher />
       {children}
       <Toaster
-        position="bottom-right"
+        position="bottom-center"
         theme="dark"
+        closeButton
         toastOptions={{
           style: {
-            background: "rgba(12,12,14,0.92)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            color: "#fff",
-            backdropFilter: "blur(20px)",
+            background: "var(--app-panel-solid, rgba(12,12,16,0.94))",
+            border: "1px solid var(--app-border, rgba(255,255,255,0.10))",
+            color: "var(--app-text, #fff)",
+            backdropFilter: "blur(24px)",
+            borderRadius: "14px",
           },
         }}
       />

@@ -14,7 +14,7 @@ import { cn, formatTime } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { usePlayerStore } from "@/stores/player-store";
 import { playTrackNow, togglePlayNow } from "@/lib/player-actions";
-import { RECITERS, SURAHS, streamProxy, downloadUrl, reciterByCode, getSurah, type Reciter, type Surah } from "@/lib/server/quran";
+import { RECITERS, SURAHS, streamProxy, downloadUrl, reciterByCode, getSurah, QURAN_SOURCES, type Reciter, type Surah } from "@/lib/server/quran";
 import type { TrackDTO } from "@/lib/types";
 
 const PATTERN =
@@ -23,7 +23,9 @@ const PATTERN =
     `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='72' viewBox='0 0 72 72'><g fill='none' stroke='%23c9a24a' stroke-opacity='0.10'><path d='M36 4 L44 28 L68 36 L44 44 L36 68 L28 44 L4 36 L28 28 Z'/><circle cx='36' cy='36' r='6'/><path d='M0 36 H72 M36 0 V72'/></g></svg>`,
   );
 
-function quranTrack(reciter: Reciter, surah: Surah): TrackDTO {
+type QQuality = "low" | "medium" | "high";
+
+function quranTrack(reciter: Reciter, surah: Surah, quality: QQuality = "high"): TrackDTO {
   return {
     id: -900000 - surah.n,
     title: `سورة ${surah.ar} — ${surah.en}`,
@@ -36,12 +38,12 @@ function quranTrack(reciter: Reciter, surah: Surah): TrackDTO {
     source: "quran",
     sourceId: `${surah.n}:${reciter.code}`,
     previewUrl: null,
-    streamUrl: streamProxy(surah.n, reciter.code),
+    streamUrl: streamProxy(surah.n, reciter.code, quality),
     waveform: [],
     loudnessLufs: -16,
     bpm: 0, key: null, energy: 0.1, valence: 0.7, danceability: 0.1, acousticness: 1,
     explicit: false, genre: "quran", language: "ar", year: 0, isrc: null,
-    codec: "mp3", bitrate: 128, lossless: false, playCount: 0, lyrics: [], liked: false,
+    codec: "mp3", bitrate: reciter.bestBitrate || 128, lossless: false, playCount: 0, lyrics: [], liked: false,
   };
 }
 
@@ -86,6 +88,8 @@ export default function QuranPage() {
   const t = useT();
   const [reciter, setReciter] = useState<Reciter | null>(null);
   const [q, setQ] = useState("");
+  const [rq, setRq] = useState("");
+  const [quality, setQuality] = useState<QQuality>("high");
   const [downloading, setDownloading] = useState<number | null>(null);
   const [loadingSurah, setLoadingSurah] = useState<number | null>(null);
   const current = usePlayerStore((s) => s.currentTrack);
@@ -110,14 +114,14 @@ export default function QuranPage() {
   const play = (r: Reciter, s: Surah) => {
     const isThis = current?.sourceId === `${s.n}:${r.code}`;
     if (isThis) { togglePlayNow(); return; }
-    playTrackNow(quranTrack(r, s));
+    playTrackNow(quranTrack(r, s, quality));
     toast(t("quranNowReciting"), { description: `${s.ar} · ${r.name}` });
   };
   const dl = async (r: Reciter, s: Surah) => {
     setDownloading(s.n);
     toast(t("dlStarted"));
     try {
-      const res = await fetch(downloadUrl(s.n, r.code));
+      const res = await fetch(downloadUrl(s.n, r.code, quality));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const a = document.createElement("a");
@@ -169,7 +173,7 @@ export default function QuranPage() {
               <div className="min-w-0 flex-1" style={{ fontFamily: "'Amiri','Scheherazade New','Traditional Arabic',serif" }}>
                 <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#c9a24a", fontFamily: "inherit" }}>{t("quranNowReciting")}</p>
                 <p className="truncate text-lg font-bold" style={{ color: "#f3e6c4" }}>سورة {now.surah.ar}</p>
-                <p className="truncate text-xs text-white/50">{now.reciter.name} · {now.surah.a} {t("quranAyahs")}</p>
+                <p className="truncate text-xs text-white/50">{now.reciter.name} · {now.surah.a} {t("quranAyahs")} · {now.reciter.sources.map((x) => QURAN_SOURCES[x.source].label).join(" · ")}</p>
               </div>
               <button onClick={() => void dl(now.reciter, now.surah)} className="grid size-11 shrink-0 place-items-center rounded-full border transition-colors hover:bg-white/5" style={{ borderColor: "rgba(201,162,74,0.4)", color: "#c9a24a" }} title={t("quranDownloadFull")}>
                 {downloading === now.surah.n ? <Loader2 className="size-5 animate-spin" /> : <Download className="size-5" />}
@@ -187,8 +191,17 @@ export default function QuranPage() {
               <span className="text-xs text-white/35">· {RECITERS.length}</span>
             </div>
             <p className="mb-5 px-1 text-xs text-white/40">{t("quranTapReciter")}</p>
+            <div className="relative mb-4" dir="rtl">
+              <Search className="absolute end-3.5 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+              <input
+                value={rq}
+                onChange={(e) => setRq(e.target.value)}
+                placeholder="ابحث عن قارئ…"
+                className="w-full rounded-xl border border-white/10 bg-black/30 py-2.5 pe-10 ps-4 text-sm text-white outline-none placeholder:text-white/35 focus:border-[#c9a24a]/50"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {RECITERS.map((r, i) => (
+              {RECITERS.filter((r) => !rq.trim() || r.name.includes(rq.trim()) || r.latin.toLowerCase().includes(rq.trim().toLowerCase())).map((r, i) => (
                 <motion.button
                   key={r.code}
                   initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
@@ -206,8 +219,15 @@ export default function QuranPage() {
                   >
                     {r.isEgyptian ? "🇪🇬 " : ""}{r.countryAr}
                   </span>
-                  <span className="mt-3 flex items-center gap-1 text-[11px] font-semibold opacity-0 transition-opacity group-hover:opacity-100" style={{ color: "#c9a24a" }}>
-                    {t("quranSelectReciter")} <ChevronRight className="size-3.5" />
+                  <div className="mt-2 flex flex-wrap justify-center gap-1">
+                    {r.sources.map((src) => (
+                      <span key={src.source + src.bitrate} className="rounded-full px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.55)" }}>
+                        {QURAN_SOURCES[src.source].label} · {src.bitrate}k
+                      </span>
+                    ))}
+                  </div>
+                  <span className="mt-3 flex items-center gap-1 text-[11px] font-semibold" style={{ color: "#c9a24a" }}>
+                    {t("quranSelectReciter")} <ChevronRight className="size-3.5 rtl:rotate-180" />
                   </span>
                 </motion.button>
               ))}
@@ -225,6 +245,22 @@ export default function QuranPage() {
                 <p className="truncate text-xl font-bold" style={{ color: "#f3e6c4" }}>{reciter.name}</p>
                 <p className="truncate text-xs text-white/45">{reciter.latin} · {reciter.countryAr} · {reciter.style}</p>
               </div>
+            </div>
+
+            {/* quality + source control */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2" style={{ borderColor: "rgba(201,162,74,0.25)", background: "rgba(255,255,255,0.02)" }} dir="rtl">
+              <span className="text-[11px] font-bold" style={{ color: "#c9a24a" }}>جودة التحميل</span>
+              {(["low", "medium", "high"] as const).map((qq) => (
+                <button
+                  key={qq}
+                  onClick={() => setQuality(qq)}
+                  className="rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors"
+                  style={quality === qq ? { background: "#c9a24a", color: "#0a1a12" } : { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.65)" }}
+                >
+                  {qq === "low" ? "64 kbps" : qq === "medium" ? "128 kbps" : "أعلى جودة"}
+                </button>
+              ))}
+              <span className="ms-auto text-[10px] text-white/40">المصادر: {reciter.sources.map((x) => QURAN_SOURCES[x.source].label).join(" · ")}</span>
             </div>
 
             {/* sacred notice */}
@@ -266,7 +302,7 @@ export default function QuranPage() {
                     </div>
                     <span className="hidden shrink-0 font-mono text-sm text-white/30 sm:block">{String(s.n).padStart(3, "0")}</span>
                     <button onClick={() => void dl(reciter, s)} className="grid size-10 shrink-0 place-items-center rounded-full border border-white/12 text-white/60 transition-colors hover:bg-white/5 hover:text-[#c9a24a]" title={t("quranDownloadFull")} aria-label={t("quranDownloadFull")}>
-                      {downloading === s.n ? <Loader2 className="size-4.5 animate-spin" /> : <Download className="size-4.5" />}
+                      {downloading === s.n ? <Loader2 className="size-[18px] animate-spin" /> : <Download className="size-[18px]" />}
                     </button>
                   </div>
                 );

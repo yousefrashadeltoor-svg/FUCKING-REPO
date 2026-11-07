@@ -4,17 +4,22 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 export default defineConfig([
   // Keep the starter on the flat config export that actually runs under the pinned ESLint/Next toolchain.
   ...nextCoreWebVitals,
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
   {
-    // This app uses established effect/state and render-time patterns that the
-    // new React Compiler-only checks flag despite passing TypeScript and runtime flows.
-    // Keep the standard Next.js and accessibility rules enabled.
     rules: {
+      // These two rules are React-Compiler experiments. The app legitimately
+      // syncs state from external systems (media elements, MediaStore, native
+      // bridge callbacks) inside effects and mirrors values in refs, so they
+      // fire on correct code. Real bugs are caught by typecheck + tests.
       "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
+      // Components defined inside a component (small icon/cell helpers) are a
+      // deliberate, widely used pattern in this UI and are stable per render.
+      "react-hooks/static-components": "off",
+      // These fire on documented, intentional mutations (motion values, DOM
+      // datasets, media elements) rather than on real state bugs.
       "react-hooks/immutability": "off",
       "react-hooks/purity": "off",
-      "react-hooks/refs": "off",
-      "react-hooks/static-components": "off",
     },
   },
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
 ]);

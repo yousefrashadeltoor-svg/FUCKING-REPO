@@ -1,9 +1,10 @@
 "use client";
 
-// Global overlays: Now Playing full-screen + keyboard shortcuts, plus the
-// "?" key handler and a global escape to close.
+// Global overlays, in strict z-order:
+//   NowPlaying (70) → InfoSheet (92) → Shortcuts (95)
 import { useEffect } from "react";
 import { NowPlaying } from "./NowPlaying";
+import { InfoSheet } from "./InfoSheet";
 import { ShortcutsOverlay } from "@/components/shared/ShortcutsOverlay";
 import { useUIStore } from "@/stores/ui-store";
 
@@ -11,6 +12,7 @@ export function PlayerOverlays() {
   const toggleShortcuts = useUIStore((s) => s.toggleShortcuts);
   const setNowPlaying = useUIStore((s) => s.setNowPlaying);
   const setShortcuts = useUIStore((s) => s.setShortcuts);
+  const setInfoSheet = useUIStore((s) => s.setInfoSheet);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -21,17 +23,19 @@ export function PlayerOverlays() {
         toggleShortcuts();
       }
       if (e.key === "Escape") {
+        setInfoSheet(false);
         setNowPlaying(false);
         setShortcuts(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleShortcuts, setNowPlaying, setShortcuts]);
+  }, [toggleShortcuts, setNowPlaying, setShortcuts, setInfoSheet]);
 
   return (
     <>
       <NowPlaying />
+      <InfoSheet />
       <ShortcutsOverlay />
     </>
   );

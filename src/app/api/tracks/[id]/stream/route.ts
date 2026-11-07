@@ -18,9 +18,15 @@ type Ctx = { params: Promise<{ id: string }> };
 const HOP_BY_HOP = new Set(["connection", "keep-alive", "transfer-encoding", "upgrade", "te", "trailer"]);
 const ytAudioCache = new Map<number, { url: string; exp: number }>();
 
+/**
+ * `?resolve=1` returns JSON describing the playable stream instead of the audio
+ * body. The Android host uses it so ExoPlayer can stream (and keep playing in
+ * the background) instead of proxying the bytes through the WebView.
+ */
 export async function GET(req: Request, ctx: Ctx) {
   await ensureSchema();
   const { id } = await ctx.params;
+  const asJson = new URL(req.url).searchParams.get("resolve") === "1";
   const trackId = Number(id);
   if (!Number.isInteger(trackId)) return Response.json({ error: "Invalid track id" }, { status: 400 });
   const [row] = await db
@@ -44,7 +50,11 @@ export async function GET(req: Request, ctx: Ctx) {
         ytAudioCache.set(trackId, { url: first, exp: Date.now() + 30 * 60 * 1000 });
       }
     }
-    if (!ytAudio) return Response.json({ error: "YouTube audio unavailable" }, { status: 502 });
+    if (!ytAudio) {
+      return asJson
+        ? Response.json({ direct: false, url: null, embed: `https://www.youtube.com/embed/${row.sourceId}`, mime: null })
+        : Response.json({ error: "YouTube audio unavailable" }, { status: 502 });
+    }
   }
 
   const [artist] = await db.select({ name: artists.name }).from(artists).where(eq(artists.id, row.artistId)).limit(1);
@@ -66,6 +76,25 @@ export async function GET(req: Request, ctx: Ctx) {
     }
   } catch {
     upstreamUrl = null;
+  }
+  if (asJson) {
+    if (!upstreamUrl) {
+      // YouTube without a direct URL: hand back the official embed so the app
+      // can still play it instead of failing silently.
+      return Response.json({
+        direct: false,
+        url: null,
+        embed: row.source === "youtube" && row.sourceId ? `https://www.youtube.com/embed/${row.sourceId}` : null,
+        mime: null,
+      });
+    }
+    return Response.json({
+      direct: true,
+      url: upstreamUrl,
+      mime: "audio/mpeg",
+      // ExoPlayer needs a real URL; relative proxies go through our own host.
+      proxy: `${new URL(req.url).origin}/api/tracks/${trackId}/stream`,
+    });
   }
   if (!upstreamUrl) return Response.json({ error: "No playable stream for this track" }, { status: 404 });
 

@@ -1,13 +1,18 @@
 "use client";
 
-// Top navigation bar: back/forward, live search field, user chip.
+// Top bar: navigation history, live search (artists first), connection state,
+// diagnostics shortcut and the account chip.
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, X, BadgeCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, ArrowRight, Search, X, BadgeCheck, Activity, WifiOff } from "lucide-react";
 import { cn, formatCount } from "@/lib/utils";
 import type { SearchResultsDTO, UserDTO } from "@/lib/types";
+import { playTrackNow } from "@/lib/player-actions";
 import { usePlayerStore } from "@/stores/player-store";
+import { useNetworkStore } from "@/stores/network-store";
 import { useT } from "@/lib/i18n";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 export function TopBar() {
   const t = useT();
@@ -18,31 +23,36 @@ export function TopBar() {
   const [user, setUser] = useState<UserDTO | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const online = useNetworkStore((s) => s.online);
 
   useEffect(() => {
     void fetch("/api/me")
-      .then((r) => r.json())
-      .then((u: UserDTO) => setUser(u))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u: UserDTO | null) => u && setUser(u))
       .catch(() => {});
   }, []);
 
-  // debounced live search
   useEffect(() => {
-    if (!q.trim()) {
+    if (!q.trim() || !online) {
       setResults(null);
       return;
     }
-    const t = setTimeout(() => {
-      void fetch(`/api/search?q=${encodeURIComponent(q)}`)
-        .then((r) => r.json())
-        .then((data: SearchResultsDTO) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: SearchResultsDTO | null) => {
+          if (!data) return;
           setResults(data);
           setOpen(true);
         })
         .catch(() => {});
-    }, 180);
-    return () => clearTimeout(t);
-  }, [q]);
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  }, [q, online]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -58,27 +68,26 @@ export function TopBar() {
     : 0;
 
   return (
-    <header className="z-20 flex h-16 shrink-0 items-center gap-3 px-4">
-      <div className="flex items-center gap-1.5">
+    <header className="relative z-20 flex h-14 shrink-0 items-center gap-2 px-1 sm:h-16 sm:gap-3 sm:px-2">
+      <div className="hidden items-center gap-1.5 sm:flex">
         <button
           onClick={() => router.back()}
-          className="grid size-9 place-items-center rounded-full bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Back"
+          className="grid size-9 place-items-center rounded-full bg-white/[0.06] text-[color:var(--app-text)] transition-colors hover:bg-white/[0.12]"
+          aria-label={t("back")}
         >
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </button>
         <button
           onClick={() => router.forward()}
-          className="grid size-9 place-items-center rounded-full bg-white/5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Forward"
+          className="grid size-9 place-items-center rounded-full bg-white/[0.06] text-[color:var(--app-text)] transition-colors hover:bg-white/[0.12]"
+          aria-label={t("forward")}
         >
           <ArrowRight className="size-4 rtl:rotate-180" />
         </button>
       </div>
 
-      {/* live search */}
       <div ref={boxRef} className="relative w-full max-w-xl">
-        <Search className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-white/40" />
+        <Search className="pointer-events-none absolute start-3.5 top-1/2 size-4 -translate-y-1/2 text-[color:var(--app-muted)]" />
         <input
           ref={inputRef}
           value={q}
@@ -97,7 +106,7 @@ export function TopBar() {
             }
           }}
           placeholder={t("searchPlaceholder")}
-          className="w-full rounded-full border border-white/10 bg-white/[0.06] py-2.5 pe-9 ps-10 text-sm text-white placeholder:text-white/35 outline-none transition-colors focus:border-white/25 focus:bg-white/[0.09]"
+          className="w-full rounded-full border border-[var(--app-border)] bg-white/[0.06] py-2.5 pe-9 ps-10 text-sm outline-none transition-colors placeholder:text-[color:var(--app-muted)] focus:border-white/25 focus:bg-white/[0.09]"
         />
         {q && (
           <button
@@ -105,75 +114,25 @@ export function TopBar() {
               setQ("");
               setResults(null);
             }}
-            className="absolute end-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
-            aria-label="Clear search"
+            className="absolute end-3 top-1/2 -translate-y-1/2 text-[color:var(--app-muted)] hover:text-[color:var(--app-text)]"
+            aria-label="clear"
           >
             <X className="size-4" />
           </button>
         )}
 
-        {/* dropdown */}
         {open && results && q.trim() && (
-          <div className="glass-modal absolute left-0 right-0 top-12 max-h-[420px] overflow-y-auto rounded-2xl p-2 aura-scroll">
+          <div className="glass-modal aura-scroll absolute inset-x-0 top-12 max-h-[60vh] overflow-y-auto rounded-2xl p-2">
             {totalResults === 0 && (
-              <p className="px-3 py-6 text-center text-sm text-white/40">
-                No results for “{q}” — try a genre like “techno” or “ambient”.
+              <p className="px-3 py-6 text-center text-sm text-[color:var(--app-muted)]">
+                {t("noResults")} “{q}”
               </p>
-            )}
-            {results.tracks.length > 0 && (
-              <div>
-                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{t("tracks")}</p>
-                {results.tracks.slice(0, 5).map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      playTrack(t, { queue: results.tracks, index: results.tracks.findIndex((x) => x.id === t.id) });
-                      setOpen(false);
-                      setQ("");
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/8"
-                  >
-                    {t.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={t.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{t.title}</span>
-                      <span className="block truncate text-xs text-white/40">{t.artistName}</span>
-                    </span>
-                    <span className="text-[11px] text-white/30">{t.genre}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {results.albums.length > 0 && (
-              <div>
-                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{t("albums")}</p>
-                {results.albums.slice(0, 4).map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => {
-                      router.push(`/albums/${a.id}`);
-                      setOpen(false);
-                      setQ("");
-                    }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/8"
-                  >
-                    {a.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={a.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{a.title}</span>
-                      <span className="block truncate text-xs text-white/40">{a.artistName}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
             )}
             {results.artists.length > 0 && (
               <div>
-                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{t("artists")}</p>
+                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                  {t("artists")}
+                </p>
                 {results.artists.slice(0, 4).map((a) => (
                   <button
                     key={a.id}
@@ -182,40 +141,76 @@ export function TopBar() {
                       setOpen(false);
                       setQ("");
                     }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/8"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start transition-colors hover:bg-white/[0.08]"
                   >
-                    {a.imageUrl && (
+                    {a.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={a.imageUrl} alt="" className="size-9 rounded-full object-cover" />
+                    ) : (
+                      <span className="grid size-9 place-items-center rounded-full bg-white/10 text-xs font-bold">{a.name.slice(0, 1)}</span>
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{a.name}</span>
-                      <span className="block truncate text-xs text-white/40">{formatCount(a.monthlyListeners)} listeners</span>
+                      <span className="flex items-center gap-1 truncate text-sm font-medium">
+                        <span className="truncate">{a.name}</span>
+                        {a.verified && <BadgeCheck className="size-3.5 shrink-0 text-sky-400" />}
+                      </span>
+                      <span className="flex items-center gap-1 truncate text-xs text-[color:var(--app-muted)]">
+                        <BrandIcon name={a.source} color="brand" className="size-3" />
+                        {formatCount(a.followers || a.monthlyListeners || 0)} {t("followers")}
+                      </span>
                     </span>
                   </button>
                 ))}
               </div>
             )}
-            {results.playlists.length > 0 && (
+            {results.tracks.length > 0 && (
               <div>
-                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">{t("playlists")}</p>
-                {results.playlists.slice(0, 4).map((p) => (
+                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                  {t("tracks")}
+                </p>
+                {results.tracks.slice(0, 5).map((tr) => (
                   <button
-                    key={p.id}
+                    key={tr.id}
                     onClick={() => {
-                      router.push(`/playlists/${p.id}`);
+                      playTrackNow(tr, { queue: results.tracks, index: results.tracks.findIndex((x) => x.id === tr.id) });
                       setOpen(false);
                       setQ("");
                     }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-white/8"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start transition-colors hover:bg-white/[0.08]"
                   >
-                    {p.coverUrl && (
+                    {tr.coverUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
+                      <img src={tr.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{p.title}</span>
-                      <span className="block truncate text-xs text-white/40">{p.trackCount} tracks</span>
+                      <span className="block truncate text-sm font-medium">{tr.title}</span>
+                      <span className="block truncate text-xs text-[color:var(--app-muted)]">{tr.artistName}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {results.albums.length > 0 && (
+              <div>
+                <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                  {t("albums")}
+                </p>
+                {results.albums.slice(0, 3).map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => {
+                      router.push(`/albums/${a.id}`);
+                      setOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start transition-colors hover:bg-white/[0.08]"
+                  >
+                    {a.coverUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={a.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{a.title}</span>
+                      <span className="block truncate text-xs text-[color:var(--app-muted)]">{a.artistName}</span>
                     </span>
                   </button>
                 ))}
@@ -227,32 +222,55 @@ export function TopBar() {
                   router.push(`/search?q=${encodeURIComponent(q.trim())}`);
                   setOpen(false);
                 }}
-                className={cn(
-                  "mt-1 w-full rounded-xl px-3 py-2.5 text-center text-[13px] font-semibold",
-                  "bg-white/8 text-white/80 transition-colors hover:bg-white/12",
-                )}
+                className={cn("mt-1 w-full rounded-xl px-3 py-2.5 text-center text-[13px] font-semibold", "bg-white/[0.08] text-[color:var(--app-text)] transition-colors hover:bg-white/[0.14]")}
               >
-                See all results for “{q}”
+                {t("seeAllResults")} “{q}”
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* user chip */}
-      <div className="ms-auto flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.05] py-1.5 pe-3.5 ps-1.5">
-        {user?.avatarUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={user.avatarUrl} alt={user.name} className="size-7 rounded-full object-cover" />
+      <div className="ms-auto flex shrink-0 items-center gap-1.5">
+        {!online && (
+          <span className="grid size-8 place-items-center rounded-full bg-amber-500/15 text-amber-300" title={t("offlineBanner")}>
+            <WifiOff className="size-4" />
+          </span>
         )}
-        <div className="leading-tight">
-          <p className="flex items-center gap-1 text-[12.5px] font-semibold">
-            {user?.name ?? "Listener"}
-            {user?.tier === "ultimate" && <BadgeCheck className="size-3.5 text-gold" />}
-          </p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gold/90">
-            DON MUSE · {user?.tier ?? "free"}
-          </p>
+        <Link
+          href="/diagnostics"
+          title={t("diagnostics")}
+          aria-label={t("diagnostics")}
+          className="hidden size-9 place-items-center rounded-full bg-white/[0.06] text-[color:var(--app-muted)] transition-colors hover:text-[color:var(--app-text)] sm:grid"
+        >
+          <Activity className="size-4" />
+        </Link>
+        {/* The user chip: an elegant gold-on-obsidian plate instead of the flat
+            translucent box the user complained about. */}
+        <div className="user-plate hidden items-center gap-2.5 py-1.5 pe-3.5 ps-1.5 sm:flex">
+          <span className="relative grid place-items-center">
+            {user?.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={user.avatarUrl}
+                alt={user.name}
+                className="size-7 rounded-full object-cover ring-1 ring-[#d4af37]/60"
+              />
+            ) : (
+              <span className="grid size-7 place-items-center rounded-full bg-[linear-gradient(140deg,#F6E7A8,#D4AF37_45%,#8C6B14)] text-[11px] font-black text-[#1a1405] shadow-[0_2px_10px_-2px_rgba(212,175,55,0.8)]">
+                {(user?.name ?? "D")[0]}
+              </span>
+            )}
+          </span>
+          <div className="leading-tight">
+            <p className="flex items-center gap-1 text-[12.5px] font-semibold">
+              <span className="gold-text">{user?.name ?? "Listener"}</span>
+              {user?.tier === "ultimate" && <BadgeCheck className="size-3.5 text-[#d4af37]" />}
+            </p>
+            <p className="text-[9.5px] font-medium uppercase tracking-[0.18em] text-[#d4af37]/75">
+              DON MUSE · {user?.tier ?? "free"}
+            </p>
+          </div>
         </div>
       </div>
     </header>

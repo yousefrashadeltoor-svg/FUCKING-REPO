@@ -1,0 +1,96 @@
+name: Build DON MUSE APK
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android-apk.yml"]
+  pull_request:
+    paths: ["android/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Bundle the real web UI inside the APK so the app also opens with no
+      # network (assets/www). The app falls back to the hosted build if absent.
+      - name: Build web UI for bundling
+        working-directory: .
+        env:
+          NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --ignore-scripts || npm install --ignore-scripts
+          npm run build
+          node scripts/gh-pages-export.mjs
+          mkdir -p android/app/src/main/assets
+          rm -rf android/app/src/main/assets/www
+          cp -r out android/app/src/main/assets/www
+        continue-on-error: true
+
+      - uses: android-actions/setup-android@v3
+
+      # The repo carries only gradle-wrapper.properties, so the wrapper is
+      # generated on CI where Gradle is available (no committed jar needed).
+      - name: Generate Gradle wrapper
+        run: |
+          if [ -x ./gradlew ] && [ -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "wrapper already present"
+          else
+            gradle wrapper --gradle-version 8.7
+          fi
+          chmod +x gradlew
+
+      - name: Build debug APK
+        env:
+          DONMUSE_WEB_HOST: ${{ vars.DONMUSE_WEB_HOST }}
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Build release APK (signed when secrets exist, else debug-signed)
+        env:
+          DONMUSE_KEYSTORE_B64: ${{ secrets.DONMUSE_KEYSTORE_B64 }}
+          DONMUSE_STORE_PASSWORD: ${{ secrets.DONMUSE_STORE_PASSWORD }}
+          DONMUSE_KEY_ALIAS: ${{ secrets.DONMUSE_KEY_ALIAS }}
+          DONMUSE_KEY_PASSWORD: ${{ secrets.DONMUSE_KEY_PASSWORD }}
+        run: |
+          if [ -n "${DONMUSE_KEYSTORE_B64:-}" ]; then
+            echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
+            echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
+          fi
+          ./gradlew :app:assembleRelease --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: don-muse-apk
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk
+
+      - name: Attach APKs to a rolling release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: DON MUSE — latest APK
+          body: Automatically built from the latest main branch.
+          files: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk

@@ -1,38 +1,45 @@
-/* DON MUSE service worker — fully local UI.
- * Strategy:
- *  • App shell (HTML pages, JS/CSS chunks, fonts, icons, logo, developer image):
- *    cache-first, populated on install + at runtime.
- *  • API GET responses (/api/home, /api/radio, /api/tv, /api/search, /api/playlists…):
- *    network-first with cache fallback → the UI renders the last known data offline.
- *  • Media streams/downloads (/api/tracks/:id/stream, /api/radio/stream, /api/tv/proxy,
- *    /download): never cached (pass-through) — these are the only things that need
- *    the internet.
+/* DON MUSE — service worker
+ *
+ * Strategy (optimised for instant starts and offline resilience):
+ *   • Navigations  → network-first, fall back to the cached shell, then to
+ *                    /offline.html. This is what makes the app open instantly
+ *                    from the home screen and still work with no signal.
+ *   • Static build artefacts (/_next/static, fonts, images, css, js, svg)
+ *                    → cache-first, immutable (hashed filenames).
+ *   • API GETs     → stale-while-revalidate with a short TTL: the UI paints
+ *                    immediately from cache and refreshes in the background.
+ *   • Media        → never cached. Streams must go straight to the network so
+ *                    seeking/Range requests stay correct.
+ *   • Writes (POST/PATCH/DELETE) → network only, queued notification on failure.
  */
-const VERSION = "donmuse-v3";
+const VERSION = "donmuse-v4";
 const SHELL = `${VERSION}-shell`;
 const DATA = `${VERSION}-data`;
+const STATIC = `${VERSION}-static`;
+
 const PRECACHE = [
   "/",
   "/search",
   "/library",
+  "/my-music",
+  "/following",
   "/radio",
   "/tv",
-  "/ai",
+  "/quran",
+  "/downloads",
   "/settings",
-  "/about",
-  "/logo.png",
-  "/logo.svg",
-  "/logo-dark.png",
-  "/icon-192.png",
-  "/favicon.png",
-  "/developer.jpg",
-  "/manifest.webmanifest",
   "/offline.html",
+  "/logo.svg",
+  "/logo-dark.svg",
+  "/manifest.webmanifest",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(SHELL).then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(u)))).then(() => self.skipWaiting()),
+    caches
+      .open(SHELL)
+      .then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(new Request(u, { cache: "reload" })))))
+      .then(() => self.skipWaiting()),
   );
 });
 
@@ -46,83 +53,96 @@ self.addEventListener("activate", (event) => {
 });
 
 const isMedia = (url) =>
-  /\/api\/tracks\/\d+\/(stream|download)/.test(url.pathname) ||
-  url.pathname.startsWith("/api/radio/stream") ||
-  url.pathname.startsWith("/api/tv/proxy") ||
-  /\/api\/tracks\/\d+\/formats/.test(url.pathname);
+  /^\/api\/(quran\/(stream|download)|tracks\/[^/]+\/stream|radio\/(stream|proxy)|tv\/proxy)/.test(url.pathname) ||
+  /^\/api\/tracks\/[^/]+\/(formats|download)/.test(url.pathname);
 
 const isApi = (url) => url.pathname.startsWith("/api/");
-const isShellAsset = (url) =>
-  url.pathname.startsWith("/_next/static/") ||
-  /\.(png|jpg|jpeg|svg|webp|ico|woff2?|ttf|css|js|webmanifest)$/.test(url.pathname);
+const isStatic = (url) =>
+  url.pathname.startsWith("/_next/static/") || /\.(png|jpg|jpeg|svg|webp|avif|ico|woff2?|ttf|css|webmanifest)$/.test(url.pathname);
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return; // third-party (YouTube iframe, logos) untouched
-  if (isMedia(url)) return; // streaming/downloads: network only
+  if (req.method !== "GET") return; // writes go straight to the network
 
-  if (isShellAsset(url)) {
-    event.respondWith(cacheFirst(req, SHELL));
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return; // let cross-origin (CDNs, streams) pass
+  if (isMedia(url)) return; // never intercept media
+
+  /* ------------------------------ navigations ----------------------------- */
+  if (req.mode === "navigate") {
+    event.respondWith(
+      (async () => {
+        try {
+          const fresh = await fetch(req);
+          const cache = await caches.open(SHELL);
+          cache.put(req, fresh.clone()).catch(() => {});
+          return fresh;
+        } catch {
+          return (
+            (await caches.match(req)) ||
+            (await caches.match("/")) ||
+            (await caches.match("/offline.html")) ||
+            new Response("<h1>Offline</h1>", { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 })
+          );
+        }
+      })(),
+    );
     return;
   }
+
+  /* --------------------------------- API ---------------------------------- */
   if (isApi(url)) {
-    event.respondWith(networkFirst(req, DATA));
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(DATA);
+        const cached = await cache.match(req);
+        const network = fetch(req)
+          .then((res) => {
+            if (res.ok) cache.put(req, res.clone()).catch(() => {});
+            return res;
+          })
+          .catch(() => null);
+        if (cached) {
+          // stale-while-revalidate
+          network.catch(() => {});
+          return cached;
+        }
+        const res = await network;
+        return (
+          res ||
+          new Response(JSON.stringify({ offline: true, error: "Network unavailable" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          })
+        );
+      })(),
+    );
     return;
   }
-  if (req.mode === "navigate" || req.headers.get("accept")?.includes("text/html")) {
-    event.respondWith(navigate(req));
+
+  /* -------------------------------- static -------------------------------- */
+  if (isStatic(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(STATIC);
+        const hit = await cache.match(req);
+        if (hit) return hit;
+        try {
+          const res = await fetch(req);
+          if (res.ok) cache.put(req, res.clone()).catch(() => {});
+          return res;
+        } catch {
+          return hit || Response.error();
+        }
+      })(),
+    );
   }
 });
 
-async function cacheFirst(req, cacheName) {
-  const cache = await caches.open(cacheName);
-  const hit = await cache.match(req);
-  if (hit) return hit;
-  try {
-    const res = await fetch(req);
-    if (res.ok) cache.put(req, res.clone());
-    return res;
-  } catch {
-    return hit ?? Response.error();
+/* --------------------------- background sync ---------------------------- */
+self.addEventListener("message", (event) => {
+  if (event.data === "skip-waiting") self.skipWaiting();
+  if (event.data === "clear-cache") {
+    event.waitUntil(caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))));
   }
-}
-
-async function networkFirst(req, cacheName) {
-  const cache = await caches.open(cacheName);
-  try {
-    const res = await fetch(req);
-    if (res.ok) cache.put(req, res.clone());
-    return res;
-  } catch {
-    const hit = await cache.match(req);
-    if (hit) return hit;
-    return new Response(JSON.stringify({ offline: true, error: "offline" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-}
-
-async function navigate(req) {
-  const cache = await caches.open(SHELL);
-  try {
-    const res = await fetch(req);
-    if (res.ok) cache.put(req, res.clone());
-    return res;
-  } catch {
-    const url = new URL(req.url);
-    return (
-      (await cache.match(req)) ||
-      (await cache.match(url.pathname)) ||
-      (await cache.match("/")) ||
-      (await cache.match("/offline.html")) ||
-      Response.error()
-    );
-  }
-}
-
-self.addEventListener("message", (e) => {
-  if (e.data === "SKIP_WAITING") self.skipWaiting();
 });

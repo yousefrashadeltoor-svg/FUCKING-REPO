@@ -1,4 +1,4 @@
-import { RECITERS, SURAHS } from "@/lib/server/quran";
+import { QURAN_SOURCES, RECITERS, SURAHS } from "@/lib/server/quran";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,8 @@ export async function GET() {
   return Response.json({
     reciters: RECITERS,
     surahs: SURAHS,
+    sources: QURAN_SOURCES,
+    total: RECITERS.length,
     note: "Quran is streamed and downloaded as complete surahs — clipping is disabled to preserve meaning.",
   });
 }

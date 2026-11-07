@@ -5,7 +5,7 @@
 import { Check } from "lucide-react";
 import { cn, EQ_PRESETS } from "@/lib/utils";
 import { usePlayerStore } from "@/stores/player-store";
-import { ACCENT_HEX, useSettingsStore, type Accent, type Density, type Quality } from "@/stores/settings-store";
+import { ACCENT_HEX, THEMES, useSettingsStore, type Accent, type Density, type Quality, type Theme } from "@/stores/settings-store";
 import { useT, type DictKey } from "@/lib/i18n";
 
 const QUALITIES: { id: Quality; label: DictKey; desc: DictKey }[] = [
@@ -22,6 +22,7 @@ const DENSITIES: { id: Density; label: DictKey }[] = [
   { id: "spacious", label: "spacious" },
 ];
 const LANGS = ["en", "ar", "fr", "es", "tr", "ur"];
+const THEME_IDS = Object.keys(THEMES) as Theme[];
 
 function Row({ label, desc, children }: { label: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -82,6 +83,15 @@ export default function SettingsPage() {
         <Row label={t("lyricsScroll")} desc={t("lyricsScrollDesc")}>
           <Toggle on={s.lyricsAutoScroll} onChange={s.setLyricsAutoScroll} />
         </Row>
+        <Row label={t("backgroundPlayback")} desc={t("backgroundPlaybackDesc")}>
+          <Toggle on={s.backgroundPlayback} onChange={s.setBackgroundPlayback} />
+        </Row>
+        <Row label={t("autoOffline")} desc={t("autoOfflineDesc")}>
+          <Toggle on={s.autoOfflineLibrary} onChange={s.setAutoOfflineLibrary} />
+        </Row>
+        <Row label={t("lowData")} desc={t("lowDataDesc")}>
+          <Toggle on={s.dataSaver} onChange={s.setDataSaver} />
+        </Row>
         <Row label={t("eqPreset")} desc={t("eqPresetDesc")}>
           <select
             value={Object.keys(EQ_PRESETS).find((k) => JSON.stringify(EQ_PRESETS[k]) === JSON.stringify(eqBands)) ?? "custom"}
@@ -121,6 +131,30 @@ export default function SettingsPage() {
       </Section>
 
       <Section title={t("appearance")}>
+        <Row label={t("themeLabel")} desc={t("themeDesc")}>
+          <div className="flex flex-wrap gap-2">
+            {THEME_IDS.map((id) => {
+              const th = THEMES[id];
+              return (
+                <button
+                  key={id}
+                  onClick={() => s.setTheme(id)}
+                  title={th.labelAr}
+                  aria-label={th.label}
+                  className={cn(
+                    "group relative h-9 w-14 overflow-hidden rounded-xl border transition-transform hover:scale-105",
+                    s.theme === id ? "border-[var(--app-accent)] ring-2 ring-[var(--app-accent)]/40" : "border-white/15",
+                  )}
+                  style={{ background: th.bg }}
+                >
+                  <span className="absolute inset-x-1.5 top-1.5 h-2 rounded-full" style={{ background: th.text, opacity: 0.85 }} />
+                  <span className="absolute inset-x-1.5 top-[18px] h-1.5 rounded-full" style={{ background: th.muted }} />
+                  <span className="absolute bottom-1.5 start-1.5 size-2.5 rounded-full" style={{ background: th.panel, border: `1px solid ${th.border}` }} />
+                </button>
+              );
+            })}
+          </div>
+        </Row>
         <Row label={t("accentColor")} desc={t("accentDesc")}>
           <div className="flex items-center gap-2">
             {ACCENTS.map((a) => (
@@ -136,6 +170,15 @@ export default function SettingsPage() {
               />
             ))}
           </div>
+        </Row>
+        <Row label={t("motion")} desc={t("motionDesc")}>
+          <Toggle on={s.reducedEffects} onChange={s.setReducedEffects} />
+        </Row>
+        <Row label={t("highRefresh")} desc={t("highRefreshDesc")}>
+          <Toggle on={s.highRefresh} onChange={s.setHighRefresh} />
+        </Row>
+        <Row label={t("haptics")} desc={t("hapticsDesc")}>
+          <Toggle on={s.hapticsOnTap} onChange={s.setHapticsOnTap} />
         </Row>
         <Row label={t("density")}>
           <div className="flex gap-1 rounded-xl bg-black/40 p-1">
