@@ -1,0 +1,201 @@
+name: Import and build DON MUSE
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: don-muse-main-build-v2
+  cancel-in-progress: false
+
+jobs:
+  prepare-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Import the original ZIP only when source is not yet unpacked
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package.json ]; then
+            echo "Application source is already present; preserving tracked changes."
+          else
+            archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+            test -n "$archive"
+            work="$RUNNER_TEMP/don-muse-import"
+            mkdir -p "$work"
+            unzip -q "$archive" -d "$work"
+            test -f "$work/package.json"
+            rsync -a "$work/" ./ \
+              --exclude='.git/' \
+              --exclude='node_modules/' \
+              --exclude='.next/' \
+              --exclude='dist/' \
+              --exclude='coverage/' \
+              --exclude='.cache/' \
+              --exclude='.gradle/' \
+              --exclude='android/.gradle/' \
+              --exclude='android/app/build/' \
+              --exclude='android/local.properties' \
+              --exclude='android/.github/'
+          fi
+          rm -rf android/.gradle android/app/build android/local.properties 2>/dev/null || true
+          cat > .gitignore <<'EOF'
+          node_modules/
+          .next/
+          dist/
+          coverage/
+          .cache/
+          /data/
+          .env
+          .env.*
+          !.env.example
+          !.env.sample
+          !.env.template
+          android/.gradle/
+          android/local.properties
+          android/app/build/
+          android/*.jks
+          android/*.keystore
+          EOF
+
+      - name: Apply reviewed playback, UI, and Android fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_file=".github/donmuse-critical.patch.gz.b64"
+          if [ -f "$patch_file" ]; then
+            base64 --decode "$patch_file" | gzip --decompress > "$RUNNER_TEMP/donmuse-critical.patch"
+            gzip --test < <(base64 --decode "$patch_file")
+            patch --batch --forward -p1 < "$RUNNER_TEMP/donmuse-critical.patch"
+            rm -f "$patch_file"
+          else
+            echo "No pending source patch; keeping current application source."
+          fi
+
+      - name: Commit imported source and reviewed fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Import DON MUSE source and fix playback state"
+            git push origin HEAD:main
+          else
+            echo "No source changes to commit."
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install web dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check web application
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > "$RUNNER_TEMP/typecheck.log" 2>&1
+          result=$?
+          cat "$RUNNER_TEMP/typecheck.log"
+          exit "$result"
+
+      - name: Lint web application
+        shell: bash
+        run: |
+          set +e
+          npm run lint > "$RUNNER_TEMP/lint.log" 2>&1
+          result=$?
+          cat "$RUNNER_TEMP/lint.log"
+          exit "$result"
+
+      - name: Build web application
+        shell: bash
+        run: |
+          set +e
+          npm run build > "$RUNNER_TEMP/web-build.log" 2>&1
+          result=$?
+          cat "$RUNNER_TEMP/web-build.log"
+          exit "$result"
+
+      - name: Upload Next.js build output for diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: don-muse-next-build
+          path: |
+            .next/BUILD_ID
+            .next/build-manifest.json
+            .next/server/app-paths-manifest.json
+          if-no-files-found: ignore
+
+      - name: Set up Java
+        if: always()
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Gradle
+        if: always()
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Android debug APK
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            if [ -n "${ANDROID_SDK_ROOT:-}" ]; then
+              export ANDROID_HOME="$ANDROID_SDK_ROOT"
+            elif [ -d /usr/local/lib/android/sdk ]; then
+              export ANDROID_HOME=/usr/local/lib/android/sdk
+            else
+              echo "Android SDK was not found on this runner."
+              exit 1
+            fi
+          fi
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          if [ ! -x android/gradlew ]; then
+            gradle -p android wrapper --gradle-version 8.7
+          fi
+          chmod +x android/gradlew
+          set +e
+          android/gradlew -p android :app:assembleDebug --no-daemon > "$RUNNER_TEMP/android-build.log" 2>&1
+          result=$?
+          cat "$RUNNER_TEMP/android-build.log"
+          exit "$result"
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: don-muse-build-diagnostics
+          path: |
+            ${{ runner.temp }}/typecheck.log
+            ${{ runner.temp }}/lint.log
+            ${{ runner.temp }}/web-build.log
+            ${{ runner.temp }}/android-build.log
+          if-no-files-found: ignore
+
+      - name: Upload Android APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: don-muse-android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
