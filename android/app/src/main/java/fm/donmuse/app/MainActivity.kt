@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import fm.donmuse.app.data.DeviceMusic
 import fm.donmuse.app.data.DeviceSong
 import fm.donmuse.app.playback.PlaybackService
+import fm.donmuse.app.playback.Playback
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -79,12 +81,21 @@ fun DonMuseRoot() {
     var loading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh(ctx) { s -> songs = s } }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        refresh(ctx) { scanned -> songs = scanned; loading = false }
+    }
     LaunchedEffect(Unit) {
-        val perms = mutableListOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
-        if (Build.VERSION.SDK_INT < 33) perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        val perms = if (Build.VERSION.SDK_INT >= 33) {
+            mutableListOf(
+                Manifest.permission.READ_MEDIA_AUDIO,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.POST_NOTIFICATIONS,
+            )
+        } else {
+            mutableListOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
         permLauncher.launch(perms.toTypedArray())
-        refresh(ctx) { s -> songs = s; loading = false }
+        refresh(ctx) { scanned -> songs = scanned; loading = false }
         scope.launch {
             quran = withContext(Dispatchers.IO) { fetchQuran() }
             radio = withContext(Dispatchers.IO) { fetchRadio() }
@@ -108,7 +119,14 @@ fun DonMuseRoot() {
         Column(Modifier.padding(pad).fillMaxSize().background(Void)) {
             Header()
             when (tab) {
-                0 -> DeviceList(songs, loading)
+                0 -> DeviceList(songs, loading) { selected ->
+                    Playback.play(
+                        songs.map { it.title to it.artist },
+                        selected,
+                        songs.map { it.uri.toString() },
+                    )
+                    tab = 3
+                }
                 1 -> QuranList(quran)
                 2 -> RadioList(radio)
                 else -> PlayerPanel()
@@ -132,7 +150,7 @@ private fun Header() {
 }
 
 @Composable
-private fun DeviceList(songs: List<DeviceSong>, loading: Boolean) {
+private fun DeviceList(songs: List<DeviceSong>, loading: Boolean, onPlay: (Int) -> Unit) {
     if (loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Accent) }
         return
@@ -147,7 +165,13 @@ private fun DeviceList(songs: List<DeviceSong>, loading: Boolean) {
     LazyColumn(Modifier.fillMaxSize()) {
         items(songs.take(500)) { s ->
             ListItem(
+                modifier = Modifier.clickable { onPlay(songs.indexOf(s)) },
                 colors = ListItemDefaults.colors(containerColor = Void),
+                leadingContent = {
+                    Box(Modifier.size(42.dp).background(Panel, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.MusicNote, contentDescription = null, tint = Accent)
+                    }
+                },
                 headlineContent = { Text(s.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 supportingContent = { Text("${s.artist} · ${s.album}", color = Color(0xFF8A8A92), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 trailingContent = { Text(formatMs(s.durationMs), color = Color(0xFF6E6E76), fontSize = 11.sp) }
@@ -193,13 +217,37 @@ private fun RadioList(items: List<Triple<String, String, String>>) {
 
 @Composable
 private fun PlayerPanel() {
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Panel, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
-            Text("♪", fontSize = 64.sp, color = Accent)
+    val player = PlaybackService.player
+    var title by remember { mutableStateOf(player?.currentMediaItem?.mediaMetadata?.title?.toString().orEmpty()) }
+    var playing by remember { mutableStateOf(player?.isPlaying == true) }
+    DisposableEffect(player) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                title = mediaItem?.mediaMetadata?.title?.toString().orEmpty()
+            }
         }
-        Spacer(Modifier.height(16.dp))
-        Text("DON MUSE player", color = Color.White, fontWeight = FontWeight.Bold)
-        Text("Background playback + notification + widget controls", color = Color(0xFF8A8A92), fontSize = 12.sp)
+        player?.addListener(listener)
+        onDispose { player?.removeListener(listener) }
+    }
+    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).background(Panel, RoundedCornerShape(24.dp)), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Album, contentDescription = null, tint = Accent, modifier = Modifier.size(112.dp))
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(title.ifBlank { "Nothing playing" }, color = Color.White, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (playing) "Playing" else "Paused", color = Color(0xFF8A8A92), fontSize = 12.sp)
+        Spacer(Modifier.height(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { Playback.previous() }) { Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous", tint = Color.White) }
+            FilledIconButton(onClick = { Playback.toggle(); playing = PlaybackService.player?.isPlaying == true }, colors = IconButtonDefaults.filledIconButtonColors(containerColor = Accent, contentColor = Color.Black)) {
+                Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = if (playing) "Pause" else "Play")
+            }
+            IconButton(onClick = { Playback.next() }) { Icon(Icons.Filled.SkipNext, contentDescription = "Next", tint = Color.White) }
+            IconButton(onClick = { Playback.stop(); playing = false; title = "" }) { Icon(Icons.Filled.Close, contentDescription = "Stop", tint = Color(0xFFFF6B75)) }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("Background playback · system media notification · widgets", color = Color(0xFF8A8A92), fontSize = 11.sp)
     }
 }
 

@@ -16,13 +16,20 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
-    signingConfigs {
-        create("release") {
-            // Set these in ~/.gradle/gradle.properties or CI secrets to sign a release APK.
-            storeFile = file(System.getenv("DONMUSE_KEYSTORE") ?: "donmuse-release.jks")
-            storePassword = System.getenv("DONMUSE_STORE_PASSWORD") ?: "donmuse"
-            keyAlias = System.getenv("DONMUSE_KEY_ALIAS") ?: "donmuse"
-            keyPassword = System.getenv("DONMUSE_KEY_PASSWORD") ?: "donmuse"
+    val releaseStoreFile = System.getenv("DONMUSE_KEYSTORE")
+    val releaseStorePassword = System.getenv("DONMUSE_STORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("DONMUSE_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("DONMUSE_KEY_PASSWORD")
+    val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword).all { !it.isNullOrBlank() }
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
         }
     }
 
@@ -30,7 +37,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

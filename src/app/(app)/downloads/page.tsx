@@ -55,7 +55,7 @@ export default function DownloadsPage() {
         <Link href="/search" className="rounded-full border border-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/8">Search</Link>
         <Link href="/library" className="rounded-full border border-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/8">Library</Link>
         <span className="text-white/25">→</span>
-        <span>open a song's menu (⋯) → <b className="text-[#1DB954]">{t("addBatch")}</b>, or tap “{t("downloadAll")}” on a playlist/artist page.</span>
+        <span>open a song&apos;s menu (⋯) → <b className="text-[#1DB954]">{t("addBatch")}</b>, or tap “{t("downloadAll")}” on a playlist/artist page.</span>
       </div>
 
       {items.length === 0 ? (

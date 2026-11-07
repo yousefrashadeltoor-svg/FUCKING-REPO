@@ -12,6 +12,9 @@ import { getEngine } from "@/lib/audio/engine";
 import { usePlayerStore } from "@/stores/player-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { applyDocumentLang } from "@/lib/i18n";
+import { getTrackIdentity } from "@/lib/track-identity";
+import type { TrackDTO } from "@/lib/types";
+import { togglePlayNow } from "@/lib/player-actions";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -58,7 +61,7 @@ export function Providers({ children }: { children: ReactNode }) {
     });
     const offTrack = engine.on("trackchange", (t) => {
       // Scrobble the play.
-      const track = t as { id: number; source?: string } | undefined;
+      const track = t as Pick<TrackDTO, "id" | "source" | "sourceId"> | undefined;
       if (track && track.id > 0 && track.source !== "radio") {
         void fetch("/api/history", {
           method: "POST",
@@ -70,7 +73,7 @@ export function Providers({ children }: { children: ReactNode }) {
           .then((r) => r.json())
           .then((data: { lyrics?: { start: number; text: string }[] }) => {
             const s = usePlayerStore.getState();
-            if (data.lyrics && data.lyrics.length > 0 && s.currentTrack?.id === track.id) {
+            if (data.lyrics && data.lyrics.length > 0 && getTrackIdentity(s.currentTrack) === getTrackIdentity(track)) {
               usePlayerStore.setState({
                 currentTrack: { ...s.currentTrack, lyrics: data.lyrics },
               });
@@ -122,7 +125,7 @@ export function Providers({ children }: { children: ReactNode }) {
   }, []);
 
   // ---- load current track into the engine whenever it changes ----
-  const trackId = usePlayerStore((s) => s.currentTrack?.id);
+  const trackKey = usePlayerStore((s) => getTrackIdentity(s.currentTrack));
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   useEffect(() => {
     const track = usePlayerStore.getState().currentTrack;
@@ -131,7 +134,7 @@ export function Providers({ children }: { children: ReactNode }) {
     const playing = usePlayerStore.getState().isPlaying;
     void engine.load(track, { autoplay: playing, crossfade: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackId]);
+  }, [trackKey]);
 
   // ---- play / pause ----
   useEffect(() => {
@@ -141,7 +144,7 @@ export function Providers({ children }: { children: ReactNode }) {
     if (isPlaying) void engine.play();
     else engine.pause();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, trackId]);
+  }, [isPlaying, trackKey]);
 
   // ---- seek (user scrub) ----
   const positionSec = usePlayerStore((s) => s.positionSec);
@@ -230,7 +233,7 @@ export function Providers({ children }: { children: ReactNode }) {
       switch (e.code) {
         case "Space":
           e.preventDefault();
-          s.togglePlay();
+          togglePlayNow();
           break;
         case "ArrowRight":
           if (e.shiftKey) s.next();

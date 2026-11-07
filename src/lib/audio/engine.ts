@@ -19,6 +19,7 @@
 import { clamp, EQ_BAND_FREQUENCIES } from "@/lib/utils";
 import type { TrackDTO } from "@/lib/types";
 import { YouTubeBridge } from "./youtube-bridge";
+import { getTrackIdentity } from "@/lib/track-identity";
 
 export type EngineEvent =
   | "play"
@@ -47,7 +48,7 @@ export class UniversalPlaybackEngine {
   private active = 0;
   private listeners: Listener[] = [];
   private current: TrackDTO | null = null;
-  private loadedTrackId: number | null = null;
+  private loadedTrackKey: string | null = null;
   private normGain = 1;
   private volume = 0.8;
   private muted = false;
@@ -247,12 +248,14 @@ export class UniversalPlaybackEngine {
       clearTimeout(this.crossfadeTimer);
       this.crossfadeTimer = null;
     }
-    // Guard against double-loads (store effect + direct call in the same gesture).
-    if (this.loadedTrackId === track.id && this.current?.id === track.id) {
+    // Store effects and gesture handlers may both load the same track.
+    // Compare the full provider identity, not the numeric ID alone.
+    const trackKey = getTrackIdentity(track);
+    if (this.loadedTrackKey === trackKey) {
       if (autoplay) await this.play();
       return;
     }
-    this.loadedTrackId = track.id;
+    this.loadedTrackKey = trackKey;
     this.current = track;
     this.normGain = this.computeNormGain(track);
 
@@ -393,7 +396,8 @@ export class UniversalPlaybackEngine {
         /* ignore */
       }
     }
-    this.loadedTrackId = null;
+    this.loadedTrackKey = null;
+    this.current = null;
     this.emit("pause");
   }
 

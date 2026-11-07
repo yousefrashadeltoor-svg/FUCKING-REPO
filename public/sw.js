@@ -4,7 +4,7 @@
  *    cache-first, populated on install + at runtime.
  *  • API GET responses (/api/home, /api/radio, /api/tv, /api/search, /api/playlists…):
  *    network-first with cache fallback → the UI renders the last known data offline.
- *  • Media streams/downloads (/api/tracks/*/stream, /api/radio/stream, /api/tv/proxy,
+ *  • Media streams/downloads (/api/tracks/:id/stream, /api/radio/stream, /api/tv/proxy,
  *    /download): never cached (pass-through) — these are the only things that need
  *    the internet.
  */

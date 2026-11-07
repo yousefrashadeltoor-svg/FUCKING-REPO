@@ -10,7 +10,7 @@ import {
   X, Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX,
   Heart, Mic2, SlidersHorizontal, Info, Download, Share2, ListPlus, Music2, ArrowLeft,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "framer-motion";
 import { toast } from "sonner";
 import { cn, formatTime } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -40,7 +40,6 @@ export function NowPlaying() {
   const shuffle = usePlayerStore((s) => s.shuffle);
   const repeat = usePlayerStore((s) => s.repeat);
   const likedIds = usePlayerStore((s) => s.likedIds);
-  const togglePlay = usePlayerStore((s) => s.togglePlay);
   const next = usePlayerStore((s) => s.next);
   const prev = usePlayerStore((s) => s.prev);
   const seek = usePlayerStore((s) => s.seek);
@@ -53,6 +52,9 @@ export function NowPlaying() {
   const [eqOpen, setEqOpen] = useState(false);
   const [dlOpen, setDlOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const dragY = useMotionValue(0);
+  const dragScale = useTransform(dragY, [0, 220], [1, 0.86]);
+  const dragRadius = useTransform(dragY, [0, 180], [0, 30]);
 
   if (!open || !track) return null;
   const liked = likedIds.includes(track.id);
@@ -88,7 +90,26 @@ export function NowPlaying() {
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[70] flex flex-col overflow-hidden"
-      style={{ background: "radial-gradient(80% 60% at 50% 0%, var(--dynamic-glow, rgba(29,185,84,0.18)), #050507 70%)" }}
+      drag="y"
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.55 }}
+      dragMomentum={false}
+      onDragEnd={(_, info) => {
+        if (info.offset.y > 145 || info.velocity.y > 850) {
+          setOpen(false);
+          dragY.set(0);
+        } else {
+          void animate(dragY, 0, { type: "spring", stiffness: 420, damping: 36 });
+        }
+      }}
+      style={{
+        y: dragY,
+        scale: dragScale,
+        borderRadius: dragRadius,
+        transformOrigin: "top center",
+        background: "radial-gradient(80% 60% at 50% 0%, var(--dynamic-glow, rgba(29,185,84,0.18)), #050507 70%)",
+        touchAction: "pan-x",
+      }}
     >
       <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(60% 40% at 50% 20%, var(--dynamic-glow, transparent), transparent 70%)" }} />
 
@@ -102,7 +123,7 @@ export function NowPlaying() {
           {track.albumTitle && <p className="text-xs text-white/50">{track.albumTitle}</p>}
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => { setRightPanel(true, "info"); }} className="grid size-11 place-items-center rounded-full bg-white/5 text-white/60 hover:bg-white/10" aria-label={t("info")}><Info className="size-5" /></button>
+          <button onClick={() => setInfoOpen(true)} className="grid size-11 place-items-center rounded-full bg-white/5 text-white/60 hover:bg-white/10" aria-label={t("info")}><Info className="size-5" /></button>
         </div>
       </div>
 
@@ -162,7 +183,7 @@ export function NowPlaying() {
           <div className="flex items-center gap-2">
             <button onClick={() => setShuffle(!shuffle)} className={cn("grid size-11 place-items-center rounded-full hover:bg-white/10", shuffle ? "text-[#1DB954]" : "text-white/55")} aria-label={t("shuffle")}><Shuffle className="size-5" /></button>
             <button onClick={prev} className="grid size-12 place-items-center rounded-full bg-white/5 text-white hover:bg-white/10" aria-label={t("previous")}><SkipBack className="size-6" style={{ fill: "white" }} /></button>
-            <button onClick={() => (track.source === "quran" || track.source === "radio" ? togglePlay() : togglePlayNow())} className="grid size-16 place-items-center rounded-full bg-white text-black shadow-xl transition-transform hover:scale-105" aria-label={isPlaying ? t("pause") : t("play")}>
+            <button onClick={togglePlayNow} className="grid size-16 place-items-center rounded-full bg-white text-black shadow-xl transition-transform hover:scale-105" aria-label={isPlaying ? t("pause") : t("play")}>
               <AnimatePresence mode="wait" initial={false}>
                 {isPlaying ? <motion.span key="p" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }}><Pause className="size-7" style={{ fill: "#000" }} /></motion.span>
                   : <motion.span key="p" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }}><Play className="ms-1 size-7" style={{ fill: "#000" }} /></motion.span>}
@@ -191,6 +212,70 @@ export function NowPlaying() {
           )}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {infoOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-xl"
+            onClick={() => setInfoOpen(false)}
+          >
+            <motion.section
+              initial={{ opacity: 0, y: 18, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 360, damping: 30 }}
+              onClick={(event) => event.stopPropagation()}
+              className="max-h-[82vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-[#101014]/95 p-5 shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("info")}
+            >
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/40">DON MUSE</p>
+                  <h2 className="mt-1 text-xl font-bold text-white">{t("info")}</h2>
+                </div>
+                <button onClick={() => setInfoOpen(false)} className="grid size-10 place-items-center rounded-full bg-white/10 text-white/75 hover:bg-white/15" aria-label="Close">
+                  <X className="size-5" />
+                </button>
+              </div>
+              <div className="flex items-center gap-4 border-b border-white/10 pb-5">
+                {track.coverUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={track.coverUrl} alt="" className="size-16 rounded-xl object-cover" />
+                ) : (
+                  <div className="grid size-16 place-items-center rounded-xl bg-white/10"><Music2 className="size-7 text-white/50" /></div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-white">{track.title}</p>
+                  <p className="truncate text-sm text-white/55">{track.artistName}</p>
+                  {track.albumTitle && <p className="truncate text-xs text-white/35">{track.albumTitle}</p>}
+                </div>
+              </div>
+              <dl className="mt-4 grid grid-cols-2 gap-3">
+                {[
+                  ["Source", track.source],
+                  ["Duration", formatTime(track.durationSec || dur)],
+                  ["Year", track.year ? String(track.year) : "—"],
+                  ["Genre", track.genre || "—"],
+                  ["Language", track.language || "—"],
+                  ["Format", track.codec || (track.lossless ? "Lossless" : "—")],
+                  ["Source ID", track.sourceId || "—"],
+                  ["Track ID", String(track.id)],
+                ].map(([label, value]) => (
+                  <div key={label} className="min-w-0 rounded-xl bg-white/[0.045] p-3">
+                    <dt className="text-[10px] font-semibold uppercase tracking-wider text-white/35">{label}</dt>
+                    <dd className="mt-1 break-words text-sm text-white/85">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

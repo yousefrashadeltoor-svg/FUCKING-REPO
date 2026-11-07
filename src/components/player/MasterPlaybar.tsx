@@ -29,6 +29,7 @@ import {
   Inbox,
   Maximize2,
   Square,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -36,7 +37,7 @@ import { cn, formatTime } from "@/lib/utils";
 import { usePlayerStore } from "@/stores/player-store";
 import { useDownloadStore } from "@/stores/download-store";
 import { useUIStore } from "@/stores/ui-store";
-import { stopNow, togglePlayNow } from "@/lib/player-actions";
+import { clearNow, stopNow, togglePlayNow } from "@/lib/player-actions";
 import { ProgressSlider } from "./ProgressSlider";
 import { EqualizerPanel } from "./EqualizerPanel";
 import { DownloadMenu } from "./DownloadMenu";
@@ -227,6 +228,16 @@ export function MasterPlaybar() {
               )}
             </p>
           </div>
+          {track && (
+            <button
+              onClick={clearNow}
+              title="Clear current track"
+              aria-label="Clear current track"
+              className="grid size-7 shrink-0 place-items-center rounded-full text-white/35 transition-colors hover:bg-rose/15 hover:text-rose"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
           {track && (
             <motion.button
               whileTap={{ scale: 0.75 }}

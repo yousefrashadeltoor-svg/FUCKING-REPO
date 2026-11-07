@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { TrackDTO } from "@/lib/types";
+import { getTrackIdentity } from "@/lib/track-identity";
 
 export type RepeatMode = "off" | "all" | "one";
 
@@ -83,35 +84,51 @@ export const usePlayerStore = create<PlayerState>()(
 
       playTrack: (track, opts) => {
         const state = get();
+        const identity = getTrackIdentity(track);
         if (opts?.queue) {
-          const index =
-            opts.index ?? Math.max(0, opts.queue.findIndex((t) => t.id === track.id));
+          const requestedIndex =
+            opts.index ?? opts.queue.findIndex((item) => getTrackIdentity(item) === identity);
+          const index = opts.queue.length
+            ? Math.min(Math.max(requestedIndex, 0), opts.queue.length - 1)
+            : -1;
+          const currentTrack = index >= 0 ? opts.queue[index] : track;
           set({
             queue: opts.queue,
             index,
-            currentTrack: opts.queue[index] ?? track,
+            currentTrack,
             isPlaying: opts.autoplay !== false,
             positionSec: 0,
+            durationSec: 0,
           });
+          return;
+        }
+
+        // Reuse a queue slot only when provider + source item + ID all match.
+        const existing = state.queue.findIndex(
+          (item) => getTrackIdentity(item) === identity,
+        );
+        if (existing >= 0) {
+          const queue = [...state.queue];
+          queue[existing] = track;
+          set({ queue, index: existing, currentTrack: track, isPlaying: true, positionSec: 0, durationSec: 0 });
         } else {
-          // If track already in queue, jump to it; otherwise replace queue with it.
-          const existing = state.queue.findIndex((t) => t.id === track.id);
-          if (existing >= 0) {
-            set({ index: existing, currentTrack: state.queue[existing], isPlaying: true, positionSec: 0 });
-          } else {
-            set({ queue: [track], index: 0, currentTrack: track, isPlaying: true, positionSec: 0 });
-          }
+          set({ queue: [track], index: 0, currentTrack: track, isPlaying: true, positionSec: 0, durationSec: 0 });
         }
       },
 
-      playQueue: (queue, index) =>
+      playQueue: (queue, requestedIndex) => {
+        const index = queue.length
+          ? Math.min(Math.max(Math.trunc(requestedIndex), 0), queue.length - 1)
+          : -1;
         set({
           queue,
           index,
-          currentTrack: queue[index] ?? null,
-          isPlaying: true,
+          currentTrack: index >= 0 ? queue[index] : null,
+          isPlaying: index >= 0,
           positionSec: 0,
-        }),
+          durationSec: 0,
+        });
+      },
 
       togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
       setPlaying: (isPlaying) => set({ isPlaying }),
@@ -142,7 +159,7 @@ export const usePlayerStore = create<PlayerState>()(
             return;
           }
         }
-        set({ index: nextIndex, currentTrack: queue[nextIndex], isPlaying: true, positionSec: 0 });
+        set({ index: nextIndex, currentTrack: queue[nextIndex], isPlaying: true, positionSec: 0, durationSec: 0 });
       },
 
       prev: () => {
@@ -154,12 +171,12 @@ export const usePlayerStore = create<PlayerState>()(
           return;
         }
         const prevIndex = index - 1 < 0 ? (get().repeat === "all" ? queue.length - 1 : 0) : index - 1;
-        set({ index: prevIndex, currentTrack: queue[prevIndex], isPlaying: true, positionSec: 0 });
+        set({ index: prevIndex, currentTrack: queue[prevIndex], isPlaying: true, positionSec: 0, durationSec: 0 });
       },
 
       seek: (sec) => set({ positionSec: sec }),
       setPosition: (positionSec) => set({ positionSec }),
-      setDuration: (durationSec) => set({ durationSec }),
+      setDuration: (durationSec) => set({ durationSec: Number.isFinite(durationSec) ? Math.max(0, durationSec) : 0 }),
       setVolume: (volume) => set({ volume: Math.min(1, Math.max(0, volume)), muted: false }),
       toggleMute: () => set((s) => ({ muted: !s.muted })),
       setPlaybackRate: (playbackRate) => set({ playbackRate }),
@@ -180,10 +197,10 @@ export const usePlayerStore = create<PlayerState>()(
         set({ sleepTimerEndsAt: msFromNow === null ? null : Date.now() + msFromNow }),
 
       addToQueue: (track) =>
-        set((s) => (s.queue.some((t) => t.id === track.id) ? s : { queue: [...s.queue, track] })),
+        set((s) => (s.queue.some((item) => getTrackIdentity(item) === getTrackIdentity(track)) ? s : { queue: [...s.queue, track] })),
       playNext: (track) =>
         set((s) => {
-          if (s.queue.some((t) => t.id === track.id)) return s;
+          if (s.queue.some((item) => getTrackIdentity(item) === getTrackIdentity(track))) return s;
           const queue = [...s.queue];
           queue.splice(s.index + 1, 0, track);
           return { queue };
@@ -198,6 +215,9 @@ export const usePlayerStore = create<PlayerState>()(
             queue,
             index,
             currentTrack: queue[index] ?? null,
+            positionSec: 0,
+            durationSec: 0,
+            isPlaying: queue.length > 0 && s.isPlaying,
           };
         }),
       moveInQueue: (from, to) =>
@@ -212,7 +232,7 @@ export const usePlayerStore = create<PlayerState>()(
           else if (from > s.index && to <= s.index) index += 1;
           return { queue, index };
         }),
-      clearQueue: () => set({ queue: [], index: -1, currentTrack: null, isPlaying: false }),
+      clearQueue: () => set({ queue: [], index: -1, currentTrack: null, isPlaying: false, positionSec: 0, durationSec: 0 }),
 
       toggleLike: (trackId) =>
         set((s) => ({
