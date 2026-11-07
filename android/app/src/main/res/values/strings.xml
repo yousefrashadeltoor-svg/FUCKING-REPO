@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">DON MUSE</string>
+    <string name="channel_playback">تشغيل الموسيقى</string>
+    <string name="channel_new_releases">إصدارات جديدة</string>
+    <string name="channel_followed">الفنانون المتابَعون</string>
+    <string name="play">تشغيل</string>
+    <string name="pause">إيقاف</string>
+    <string name="next">التالي</string>
+    <string name="previous">السابق</string>
+    <string name="stop">إيقاف كامل</string>
+    <string name="widget_description">مشغّل DON MUSE — تحكم كامل</string>
+    <string name="widget_mini_description">DON MUSE المصغّر</string>
+</resources>

@@ -1,0 +1,7 @@
+<resources>
+    <color name="dm_bg">#05060A</color>
+    <color name="dm_panel">#101219</color>
+    <color name="dm_accent">#1DB954</color>
+    <color name="dm_gold">#D4AF37</color>
+    <color name="dm_text">#F6F7FB</color>
+</resources>
