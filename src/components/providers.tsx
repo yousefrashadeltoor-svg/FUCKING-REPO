@@ -73,9 +73,15 @@ export function Providers({ children }: { children: ReactNode }) {
           .then((r) => r.json())
           .then((data: { lyrics?: { start: number; text: string }[] }) => {
             const s = usePlayerStore.getState();
-            if (data.lyrics && data.lyrics.length > 0 && getTrackIdentity(s.currentTrack) === getTrackIdentity(track)) {
+            const currentTrack = s.currentTrack;
+            if (
+              currentTrack &&
+              data.lyrics &&
+              data.lyrics.length > 0 &&
+              getTrackIdentity(currentTrack) === getTrackIdentity(track)
+            ) {
               usePlayerStore.setState({
-                currentTrack: { ...s.currentTrack, lyrics: data.lyrics },
+                currentTrack: { ...currentTrack, lyrics: data.lyrics },
               });
             }
           })
