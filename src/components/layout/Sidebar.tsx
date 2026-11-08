@@ -31,6 +31,7 @@ import {
   Activity,
   BarChart3,
   MoreHorizontal,
+  Youtube,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -45,6 +46,8 @@ interface NavItem {
   key: DictKey;
   icon: typeof Home;
   tone: string;
+  external?: boolean;
+  label?: string;
 }
 
 const PRIMARY: NavItem[] = [
@@ -60,6 +63,7 @@ const PRIMARY: NavItem[] = [
   { href: "/downloads", key: "downloads", icon: Inbox, tone: "text-lime-300" },
   { href: "/stats", key: "statsTitle", icon: BarChart3, tone: "text-teal-300" },
   { href: "/ai", key: "ai", icon: Sparkles, tone: "text-fuchsia-300" },
+  { href: "https://www.youtube.com", key: "ytProfile", label: "YouTube", icon: Youtube, tone: "text-red-400", external: true },
 ];
 
 const SECONDARY: NavItem[] = [
@@ -105,13 +109,15 @@ export function Sidebar() {
   };
 
   const Item = ({ item }: { item: NavItem }) => {
-    const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+    const active = !item.external && (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href));
     const Icon = item.icon;
     return (
       <Link
         href={item.href}
-        title={t(item.key)}
-        aria-label={t(item.key)}
+        title={item.label ?? t(item.key)}
+        aria-label={item.label ?? t(item.key)}
+        target={item.external ? "_blank" : undefined}
+        rel={item.external ? "noopener noreferrer" : undefined}
         className={cn(
           "group relative flex items-center rounded-xl text-[13px] font-semibold transition-colors duration-200",
           collapsed ? "h-11 w-11 justify-center" : "gap-3 px-3 py-2",
@@ -136,10 +142,10 @@ export function Sidebar() {
           )}
         />
         <Icon className={cn("size-[19px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? item.tone : "opacity-80 group-hover:opacity-100")} />
-        {!collapsed && <span className="truncate">{t(item.key)}</span>}
+        {!collapsed && <span className="truncate">{item.label ?? t(item.key)}</span>}
         {collapsed && (
           <span className="pointer-events-none absolute start-full z-50 ms-2 whitespace-nowrap rounded-lg border border-white/10 bg-black/90 px-2.5 py-1 text-[11.5px] font-medium text-white opacity-0 shadow-xl backdrop-blur transition-opacity group-hover:opacity-100">
-            {t(item.key)}
+            {item.label ?? t(item.key)}
           </span>
         )}
       </Link>
