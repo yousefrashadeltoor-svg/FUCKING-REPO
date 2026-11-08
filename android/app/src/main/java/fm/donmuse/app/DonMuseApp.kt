@@ -63,7 +63,7 @@ class DonMuseApp : Application() {
         val WEB_HOST: String = BuildConfig.WEB_HOST
 
         /**
-         * Origin of the *server* that serves `/api/*`. When the UI is bundled the
+         * Origin of the server that serves the /api routes. When the UI is bundled the
          * page itself is a `file://` asset, so background work (release checks)
          * must still talk to the hosted origin — never to the asset path.
          */
