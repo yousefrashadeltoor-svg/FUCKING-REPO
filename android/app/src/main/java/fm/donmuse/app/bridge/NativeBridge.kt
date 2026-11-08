@@ -56,7 +56,8 @@ class NativeBridge(
         put("sdk", Build.VERSION.SDK_INT)
         put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
         put("appVersion", BuildConfig.VERSION_NAME)
-        put("server", DonMuseApp.startUrl(activity))
+        put("server", DonMuseApp.API_BASE)
+        put("ui", DonMuseApp.startUrl(activity))
     }.toString()
 
     @JavascriptInterface
