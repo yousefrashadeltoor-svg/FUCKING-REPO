@@ -72,14 +72,8 @@ jobs:
           gradle-version: "8.7"
           cache-read-only: false
 
-      - name: Generate Gradle wrapper
-        run: |
-          if [ -x ./gradlew ] && [ -f gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "wrapper already present"
-          else
-            gradle wrapper --gradle-version 8.7
-          fi
-          chmod +x gradlew
+      - name: Gradle version
+        run: gradle --version
 
       - name: Build debug APK
         env:
@@ -87,7 +81,7 @@ jobs:
         run: |
           # Surface the real compiler error as a check annotation: job logs live on
           # blob storage that some environments cannot reach, annotations do not.
-          if ! ./gradlew :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; then
+          if ! gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; then
             errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by" /tmp/gradle.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
             echo "::error title=Gradle build failed::$errs"
             exit 1
@@ -104,7 +98,7 @@ jobs:
             echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
             echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
           fi
-          if ! ./gradlew :app:assembleRelease --no-daemon 2>&1 | tee /tmp/gradle-release.log; then
+          if ! gradle :app:assembleRelease --no-daemon 2>&1 | tee /tmp/gradle-release.log; then
             errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by|Execution failed" /tmp/gradle-release.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
             echo "::error title=Release APK failed::$errs"
             exit 1
