@@ -141,7 +141,7 @@ export function Sidebar() {
             active ? "opacity-100" : "group-hover:opacity-60",
           )}
         />
-        <Icon className={cn("size-[19px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? item.tone : "opacity-80 group-hover:opacity-100")} />
+        {item.external ? <BrandIcon name="youtubevideo" className="size-[19px] shrink-0" color="#FF0000" /> : <Icon className={cn("size-[19px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? item.tone : "opacity-80 group-hover:opacity-100")} />}
         {!collapsed && <span className="truncate">{item.label ?? t(item.key)}</span>}
         {collapsed && (
           <span className="pointer-events-none absolute start-full z-50 ms-2 whitespace-nowrap rounded-lg border border-white/10 bg-black/90 px-2.5 py-1 text-[11.5px] font-medium text-white opacity-0 shadow-xl backdrop-blur transition-opacity group-hover:opacity-100">
