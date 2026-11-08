@@ -63,7 +63,7 @@ export function FloatingDownloadWidget() {
 
   const style: React.CSSProperties = position
     ? { left: position.left, top: position.top, right: "auto", bottom: "auto" }
-    : { right: 16, bottom: "calc(env(safe-area-inset-bottom, 0px) + 7.2rem)" };
+    : { right: 16, bottom: "7.2rem" };
 
   return (
     <>
