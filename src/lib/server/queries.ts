@@ -559,6 +559,42 @@ export async function getStats(userId: number): Promise<StatsDTO> {
     .orderBy(desc(sql`count(*)`))
     .limit(6);
 
+  // ---- real aggregates (no estimation, no filler) ----
+  const [{ uniq }] = await db
+    .select({ uniq: sql<number>`count(distinct ${listeningHistory.trackId})::int` })
+    .from(listeningHistory)
+    .where(eq(listeningHistory.userId, userId));
+  const [{ uniqArtists }] = await db
+    .select({ uniqArtists: sql<number>`count(distinct ${tracks.artistId})::int` })
+    .from(listeningHistory)
+    .innerJoin(tracks, eq(listeningHistory.trackId, tracks.id))
+    .where(eq(listeningHistory.userId, userId));
+
+  const hourRows = await db
+    .select({ hour: sql<number>`extract(hour from ${listeningHistory.playedAt})::int`, plays: sql<number>`count(*)::int` })
+    .from(listeningHistory)
+    .where(eq(listeningHistory.userId, userId))
+    .groupBy(sql`extract(hour from ${listeningHistory.playedAt})`);
+  const byHour = Array.from({ length: 24 }, (_, i) => hourRows.find((r) => Number(r.hour) === i)?.plays ?? 0);
+
+  const dayRows = await db
+    .select({ day: sql<string>`to_char(${listeningHistory.playedAt}, 'YYYY-MM-DD')`, plays: sql<number>`count(*)::int` })
+    .from(listeningHistory)
+    .where(and(eq(listeningHistory.userId, userId), sql`${listeningHistory.playedAt} > now() - interval '30 days'`))
+    .groupBy(sql`to_char(${listeningHistory.playedAt}, 'YYYY-MM-DD')`)
+    .orderBy(sql`to_char(${listeningHistory.playedAt}, 'YYYY-MM-DD')`);
+  const last30Days = dayRows.map((r) => ({ date: r.day, plays: r.plays }));
+
+  // streak: walk back from today (or yesterday) while a day has plays
+  const daySet = new Set(dayRows.map((r) => r.day));
+  let streakDays = 0;
+  const cursor = new Date();
+  if (!daySet.has(cursor.toISOString().slice(0, 10))) cursor.setDate(cursor.getDate() - 1);
+  while (daySet.has(cursor.toISOString().slice(0, 10))) {
+    streakDays++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
   const artistNames = await artistNameMap(artistRows.map((r) => r.artistId));
   const artistIds = artistRows.map((r) => r.artistId);
   const fullArtists = await db.select().from(artists).where(inArray(artists.id, artistIds.length ? artistIds : [-1]));
@@ -566,6 +602,11 @@ export async function getStats(userId: number): Promise<StatsDTO> {
   return {
     totalPlays: totals?.plays ?? 0,
     totalMinutes: Math.round(totals?.minutes ?? 0),
+    uniqueTracks: Number(uniq ?? 0),
+    uniqueArtists: Number(uniqArtists ?? 0),
+    streakDays,
+    byHour,
+    last30Days,
     topTracks: await hydrateTracks(topT.map((r) => r.t), userId),
     topArtists: artistRows.map((r) => {
       const full = fullArtists.find((a) => a.id === r.artistId);

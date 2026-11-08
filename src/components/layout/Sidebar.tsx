@@ -29,6 +29,7 @@ import {
   HardDrive,
   UserCheck,
   Activity,
+  BarChart3,
   MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -57,6 +58,7 @@ const PRIMARY: NavItem[] = [
   { href: "/quran", key: "quran", icon: BookOpen, tone: "text-[#d4af37]" },
   { href: "/reels", key: "reels", icon: Clapperboard, tone: "text-pink-300" },
   { href: "/downloads", key: "downloads", icon: Inbox, tone: "text-lime-300" },
+  { href: "/stats", key: "statsTitle", icon: BarChart3, tone: "text-teal-300" },
   { href: "/ai", key: "ai", icon: Sparkles, tone: "text-fuchsia-300" },
 ];
 
