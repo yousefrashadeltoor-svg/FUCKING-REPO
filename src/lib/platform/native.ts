@@ -151,6 +151,47 @@ export function requestMediaPermissions(kinds: MediaPerm[] = ["audio", "video", 
   return (res.denied?.length ?? 0) === 0;
 }
 
+/** Wait for Android's real permission-dialog result before scanning MediaStore. */
+export async function requestMediaPermissionsAsync(
+  kinds: MediaPerm[] = ["audio", "video", "notifications"],
+): Promise<boolean> {
+  const b = bridge();
+  if (!b || typeof window === "undefined") return false;
+  if (kinds.every((kind) => hasMediaPermission(kind))) return true;
+
+  return new Promise<boolean>((resolve) => {
+    const registry = (window.donmuseNative ??= {});
+    const previous = registry.__donmusePermissions;
+    let settled = false;
+    const finish = (granted: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      if (previous) registry.__donmusePermissions = previous;
+      else delete registry.__donmusePermissions;
+      resolve(granted);
+    };
+    const timeout = window.setTimeout(() => finish(kinds.every((kind) => hasMediaPermission(kind))), 120_000);
+    registry.__donmusePermissions = (raw) => {
+      // NativeEvents sends a JSON string after Android closes the dialog.
+      try {
+        const result = parse<{ granted?: string[]; denied?: string[] }>(
+          typeof raw === "string" ? raw : JSON.stringify(raw),
+          {},
+        );
+        finish((result.denied?.length ?? 0) === 0 && kinds.every((kind) => hasMediaPermission(kind)));
+      } catch {
+        finish(kinds.every((kind) => hasMediaPermission(kind)));
+      }
+    };
+    try {
+      b.requestPermissions(kinds.join(","));
+    } catch {
+      finish(kinds.every((kind) => hasMediaPermission(kind)));
+    }
+  });
+}
+
 export function hasMediaPermission(kind: MediaPerm): boolean {
   const b = bridge();
   if (!b) return false;
@@ -250,9 +291,11 @@ export const nativePlayback = {
     const b = bridge();
     if (!b) return;
     const raw = opts.uri ?? track.streamUrl;
-    const uri = raw.startsWith("/") ? new URL(raw, window.location.origin).toString() : raw;
+    const info = parse<{ server?: string }>(safe(() => b.platformInfo(), "{}"), {});
+    const base = info.server && /^https?:/.test(info.server) ? info.server : window.location.origin;
+    const uri = raw.startsWith("/") ? new URL(raw, base).toString() : raw;
     const item: NativeQueueItem = {
-      id: String(track.id),
+      id: `${track.source}:${track.sourceId ?? ""}:${track.id}`,
       uri,
       title: track.title,
       artist: track.artistName,
