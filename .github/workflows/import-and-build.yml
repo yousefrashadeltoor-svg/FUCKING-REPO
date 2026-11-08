@@ -96,14 +96,12 @@ jobs:
           cp -r out android/app/src/main/assets/www
           echo "bundled $(find android/app/src/main/assets/www -type f | wc -l) files"
 
-      - name: Generate Gradle wrapper when missing
+      # setup-gradle already put Gradle 8.7 on PATH, so no wrapper jar has to be
+      # generated (that step needs network + a writable SDK layout and is the
+      # least reliable part of an Android CI job).
+      - name: Gradle version
         working-directory: android
-        run: |
-          set -euo pipefail
-          if [ ! -x ./gradlew ]; then
-            gradle wrapper --gradle-version 8.7
-          fi
-          chmod +x gradlew
+        run: gradle --version
 
       - name: Build debug + release APKs
         working-directory: android
@@ -119,7 +117,7 @@ jobs:
             echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
             echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
           fi
-          if ! ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; then
+          if ! gradle :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; then
             errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by|Execution failed" /tmp/gradle.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
             echo "::error title=APK build failed::$errs"
             exit 1
