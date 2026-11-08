@@ -77,10 +77,8 @@ export function seekNow(sec: number): void {
 }
 
 export function nextNow(): void {
-  const s = usePlayerStore.getState();
-  s.next();
-  const t = usePlayerStore.getState().currentTrack;
-  if (t) startTrack(t);
+  // The store subscriber performs the single engine transition.
+  usePlayerStore.getState().next();
 }
 
 export function prevNow(): void {
@@ -91,8 +89,6 @@ export function prevNow(): void {
     seekNow(0);
     return;
   }
-  const t = usePlayerStore.getState().currentTrack;
-  if (t) startTrack(t);
 }
 
 /** Full stop used by the playbar X button (music · Quran · radio · TV audio). */
@@ -122,10 +118,9 @@ export function playListNow(
   const list = tracks.filter(Boolean);
   if (list.length === 0) return;
   const i = Math.max(0, Math.min(index, list.length - 1));
-  const track = list[i];
   const store = usePlayerStore.getState();
+  // The synchronous store subscription starts the engine once, in this tap. 
   store.playQueue(list, i, origin);
-  startTrack(track);
   if (useSettingsStore.getState().hapticsOnTap) {
     void import("@/lib/platform/native").then((m) => m.vibrate(8));
   }
@@ -186,20 +181,17 @@ export function installPlaybackController(): () => void {
     if (s.shuffle && s.queue.length > 1) {
       const idx = Math.floor(Math.random() * s.queue.length);
       const t = s.queue[idx];
-      store.setState({ index: idx, currentTrack: t, isPlaying: true, positionSec: 0 });
-      if (t) startTrack(t);
+      store.setState({ index: idx, currentTrack: t, isPlaying: true, positionSec: 0, durationSec: 0 });
       return;
     }
     if (nextIndex < s.queue.length) {
       const t = s.queue[nextIndex];
-      store.setState({ index: nextIndex, currentTrack: t, isPlaying: true, positionSec: 0 });
-      if (t) startTrack(t);
+      store.setState({ index: nextIndex, currentTrack: t, isPlaying: true, positionSec: 0, durationSec: 0 });
       return;
     }
     if (s.repeat === "all" && s.queue.length > 0) {
       const t = s.queue[0];
-      store.setState({ index: 0, currentTrack: t, isPlaying: true, positionSec: 0 });
-      if (t) startTrack(t);
+      store.setState({ index: 0, currentTrack: t, isPlaying: true, positionSec: 0, durationSec: 0 });
       return;
     }
     store.setState({ isPlaying: false, positionSec: 0 });
@@ -211,7 +203,8 @@ export function installPlaybackController(): () => void {
 
   const unsub = store.subscribe((s) => {
     const key = trackKey(s.currentTrack);
-    if (key !== lastKey) {
+    const changedTrack = key !== lastKey;
+    if (changedTrack) {
       lastKey = key;
       if (!s.currentTrack) {
         engine.stop();
@@ -222,12 +215,14 @@ export function installPlaybackController(): () => void {
           startAt: sameSource ? s.positionSec : 0,
         });
       }
-    }
-    if (s.isPlaying !== lastPlaying) {
-      lastPlaying = s.isPlaying;
+    } else if (s.isPlaying !== lastPlaying) {
+      // A new track is already loaded with its autoplay intent above. Calling
+      // play/pause again here raced async native stream resolution and could
+      // revive the previous player.
       if (s.isPlaying) void engine.play();
       else engine.pause();
     }
+    lastPlaying = s.isPlaying;
   });
 
   const unsubPrefs = store.subscribe((s) => {
@@ -292,11 +287,32 @@ export function installPlaybackController(): () => void {
   let offNative: (() => void) | null = null;
   if (isNativeHost()) {
     offNative = nativePlayback.onState((st) => {
+      // Ignore a delayed native callback after the engine has switched to the
+      // official YouTube iframe or the browser audio backend.
+      if (engine.backend !== "native") return;
       const cur = store.getState();
       if (!cur.currentTrack) return;
-      if (st.durationMs > 0) store.setState({ durationSec: st.durationMs / 1000 });
-      if (st.positionMs > 0) store.setState({ positionSec: st.positionMs / 1000 });
-      if (typeof st.playing === "boolean" && st.playing !== cur.isPlaying) {
+      const nativeIndex = st.itemId
+        ? cur.queue.findIndex((t) => `${t.source}:${t.sourceId ?? ""}:${t.id}` === st.itemId)
+        : -1;
+      if (nativeIndex >= 0 && nativeIndex !== cur.index) {
+        const nextTrack = cur.queue[nativeIndex];
+        if (nextTrack) {
+          engine.adoptNativeTrack(nextTrack);
+          store.setState({
+            index: nativeIndex,
+            currentTrack: nextTrack,
+            positionSec: Math.max(0, st.positionMs / 1000),
+            durationSec: Math.max(0, st.durationMs / 1000),
+          });
+        }
+      } else {
+        store.setState({
+          ...(st.durationMs > 0 ? { durationSec: st.durationMs / 1000 } : {}),
+          positionSec: Math.max(0, st.positionMs / 1000),
+        });
+      }
+      if (typeof st.playing === "boolean" && st.playing !== store.getState().isPlaying) {
         store.setState({ isPlaying: st.playing });
       }
     });
