@@ -12,6 +12,13 @@ export const dynamic = "force-dynamic";
 //  "Because you listened to <artist>" rows are built from the user's own
 //  listening history (top artists / top genre), searched live on YouTube Music.
 // ---------------------------------------------------------------------------
+/** Rotate a list by a random offset — keeps every track, changes the order. */
+function rotate<T>(items: T[]): T[] {
+  if (items.length < 2) return items;
+  const off = Math.floor(Math.random() * items.length);
+  return [...items.slice(off), ...items.slice(0, off)];
+}
+
 export async function GET() {
   const user = await getDemoUser();
   const sections = await buildHomeSections(user.id);
@@ -57,8 +64,10 @@ export async function buildHomeSections(userId: number): Promise<HomeSectionDTO[
   ]);
   const genreRow = topGenre && topGenre !== "chart" ? await safeYT(`${topGenre} music`, 12) : [];
 
+  // A shuffled copy for the hero row so two refreshes never look identical.
+  const heroPool = rotate(trending);
   const sections: HomeSectionDTO[] = [
-    { id: "hero", title: "Trending Now", subtitle: "YouTube Music · right now", kind: "tracks", items: trending.slice(0, 6) },
+    { id: "hero", title: "Trending Now", subtitle: "YouTube Music · right now", kind: "tracks", items: heroPool.slice(0, 6) },
   ];
   if (follows.length > 0) {
     sections.push({ id: "following", title: "From artists you follow", subtitle: `${follows.length} artists`, kind: "artists", items: follows });
@@ -87,7 +96,7 @@ export async function buildHomeSections(userId: number): Promise<HomeSectionDTO[
     });
   }
   sections.push(
-    { id: "trending", title: "Trending on YouTube Music", subtitle: "Full-length songs · real-time chart", kind: "tracks", items: trending },
+    { id: "trending", title: "Trending on YouTube Music", subtitle: "Full-length songs · real-time chart", kind: "tracks", items: heroPool },
     { id: "spotify-eg", title: "Spotify Top 50 — Egypt", subtitle: "Official Spotify chart · plays full-length via YouTube Music", kind: "tracks", items: spEgypt },
     { id: "spotify-global", title: "Spotify Top 50 — Global", subtitle: "Official Spotify chart", kind: "tracks", items: spGlobal },
     { id: "deezer", title: "Deezer Top Chart", subtitle: "Official Deezer chart", kind: "tracks", items: dzChart },
@@ -96,5 +105,7 @@ export async function buildHomeSections(userId: number): Promise<HomeSectionDTO[
     { id: "playlists", title: "Your Playlists", subtitle: "Created by you or DON MUSE AI", kind: "playlists", items: playlistsData },
     { id: "recent", title: "Recently Played", subtitle: "Pick up where you left off", kind: "tracks", items: recent },
   );
-  return sections;
+  // Empty rows are never rendered: a source that failed (or has no data on this
+  // deployment) must not produce a blank, decorative section.
+  return sections.filter((s) => s.items.length > 0);
 }

@@ -14,7 +14,8 @@ import { albums, artists, listeningHistory, tracks } from "@/db/schema";
 import { and, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { albumLikedSet, hydrateArtists, hydrateTracks } from "./queries";
 import { upsertAlbums, upsertArtists, upsertTracks } from "./catalog";
-import { findArtistChannelId, getOfficialArtist, type OfficialArtist } from "./youtube-artist";
+import { channelTopVideos, findArtistChannelId, officialArtistByChannelId } from "./youtube-data";
+import type { OfficialArtist } from "./youtube-artist";
 import type { ExternalTrack } from "./external";
 import type { AlbumDTO, ArtistProfileDTO, OfficialVideoDTO, TrackDTO } from "@/lib/types";
 
@@ -73,7 +74,54 @@ export async function buildArtistProfile(artistId: number, userId: number): Prom
           await db.update(artists).set({ sourceId: hit.id, source: "youtube" }).where(eq(artists.id, artistId));
         }
       }
-      if (topicId) official = await getOfficialArtist(topicId);
+      if (topicId) {
+        // Official channel data + its most-viewed music videos. The Data API does
+        // not expose a "top songs" list, so we derive it from real view counts and
+        // mark the profile honestly (featuredOn/related stay empty — see below).
+        const [channel, top] = await Promise.all([
+          officialArtistByChannelId(topicId),
+          channelTopVideos(topicId, 12),
+        ]);
+        if (channel) {
+          official = {
+            topicChannelId: channel.id,
+            officialChannelId: channel.id,
+            name: channel.name,
+            handle: channel.handle,
+            description: channel.description,
+            avatar: channel.avatar,
+            banner: channel.banner,
+            subscribers: channel.subscribers !== null ? `${channel.subscribers}` : null,
+            subscribersNum: channel.subscribers ?? 0,
+            totalViews: `${channel.totalViews}`,
+            totalViewsNum: channel.totalViews,
+            monthlyAudience: null,
+            monthlyAudienceNum: 0,
+            videoCount: `${channel.videoCount}`,
+            country: channel.country,
+            joined: channel.joined,
+            links: [],
+            verified: true,
+            topSongs: top.map((t) => ({
+              videoId: t.sourceId,
+              title: t.title,
+              artists: [t.artistName],
+              album: null,
+              plays: t.playCount ? `${t.playCount}` : null,
+              playsNum: t.playCount ?? 0,
+              durationSec: t.durationSec,
+              thumb: t.coverUrl,
+            })),
+            albums: [],
+            singles: [],
+            videos: [],
+            live: [],
+            featuredOn: [],
+            related: [],
+            fetchedAt: Date.now(),
+          };
+        }
+      }
     } catch {
       official = null;
     }

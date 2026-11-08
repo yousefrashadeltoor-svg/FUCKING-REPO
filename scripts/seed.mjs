@@ -1,10 +1,12 @@
-// DON MUSE — real-content seeder (YouTube Music + Audius, no previews).
-// Pulls REAL songs from Deezer (chart + search) and YouTube Music (youtubei.js),
-// caches them in PostgreSQL, and builds the demo library (playlists, rooms,
-// history) from real tracks. Idempotent-ish: truncates first for a clean slate.
+// DON MUSE — real-content seeder (official YouTube Data API v3 + Audius).
+// Pulls REAL songs from the documented YouTube Data API, caches them in
+// PostgreSQL and builds the starter library from those tracks.
+//
+// SAFETY: this script DESTROYS data (TRUNCATE + CASCADE, including users). It now
+// refuses to run unless you opt in explicitly:
+//     DONMUSE_ALLOW_DESTRUCTIVE_SEED=1 DATABASE_URL=… YOUTUBE_API_KEY=… npm run seed
 import "dotenv/config";
 import pg from "pg";
-import { Innertube } from "youtubei.js";
 
 const { Pool } = pg;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -91,44 +93,84 @@ async function fetchAudiusTrending(limit = 12) {
   }));
 }
 
+const YT_API = "https://www.googleapis.com/youtube/v3";
+
+function isoSeconds(iso) {
+  if (!iso) return 0;
+  const m = iso.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 86400 + Number(m[2] ?? 0) * 3600 + Number(m[3] ?? 0) * 60 + Number(m[4] ?? 0);
+}
+
+/** Official Data API v3 search → real songs (no InnerTube, no extraction). */
 async function fetchYouTube(query, limit = 12) {
-  const innertube = await Innertube.create();
-  const search = await innertube.music.search(query, { type: "song" });
-  const out = [];
-  const seen = new Set();
-  for (const shelf of search.contents ?? []) {
-    for (const item of shelf.contents ?? []) {
-      if (!item.id || !item.title || seen.has(item.id)) continue;
-      const dur = item.duration?.seconds ?? 0;
-      if (dur <= 0) continue;
-      seen.add(item.id);
-      out.push({
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) {
+    console.warn("YOUTUBE_API_KEY is not set — skipping YouTube seeding.");
+    return [];
+  }
+  const searchUrl = new URL(`${YT_API}/search`);
+  for (const [k, v] of Object.entries({
+    part: "snippet",
+    q: `${query} song`,
+    type: "video",
+    videoCategoryId: "10",
+    maxResults: String(Math.min(25, limit)),
+    key,
+  })) searchUrl.searchParams.set(k, v);
+  const sres = await fetch(searchUrl);
+  if (!sres.ok) return [];
+  const sjson = await sres.json();
+  const ids = (sjson.items ?? []).map((i) => i.id?.videoId).filter(Boolean);
+  if (ids.length === 0) return [];
+
+  const vidUrl = new URL(`${YT_API}/videos`);
+  vidUrl.searchParams.set("part", "snippet,contentDetails,statistics");
+  vidUrl.searchParams.set("id", ids.join(","));
+  vidUrl.searchParams.set("key", key);
+  const vres = await fetch(vidUrl);
+  if (!vres.ok) return [];
+  const vjson = await vres.json();
+
+  return (vjson.items ?? [])
+    .map((v) => {
+      const dur = isoSeconds(v.contentDetails?.duration);
+      const channel = (v.snippet?.channelTitle ?? "").replace(/\s*-\s*Topic$/i, "").replace(/VEVO$/i, "").trim();
+      return {
         source: "youtube",
-        sourceId: item.id,
-        title: item.title,
-        artistName: item.artists?.[0]?.name || "Unknown Artist",
-        albumTitle: typeof item.album === "string" ? item.album : item.album?.name || null,
-        coverUrl: `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
+        sourceId: v.id,
+        title: v.snippet?.title ?? "",
+        artistName: channel || "Unknown Artist",
+        albumTitle: null,
+        coverUrl: `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
         durationSec: dur,
         previewUrl: null,
         genre: query.toLowerCase(),
-        year: null,
-        playCount: 0,
-      });
-      if (out.length >= limit) return out;
-    }
-  }
-  return out;
+        year: v.snippet?.publishedAt ? Number(v.snippet.publishedAt.slice(0, 4)) : null,
+        playCount: v.statistics?.viewCount ? Number(v.statistics.viewCount) : 0,
+      };
+    })
+    .filter((t) => t.sourceId && t.title && t.durationSec > 0)
+    .slice(0, limit);
 }
 
 async function main() {
+  if (process.env.DONMUSE_ALLOW_DESTRUCTIVE_SEED !== "1") {
+    console.error(
+      "Refusing to run: this seeder TRUNCATES users, playlists, likes and history.\n" +
+        "Set DONMUSE_ALLOW_DESTRUCTIVE_SEED=1 if that is really what you want.",
+    );
+    process.exit(1);
+  }
   console.log("Truncating existing catalog…");
   await client.query(
     "TRUNCATE listening_history, user_track_likes, playlist_tracks, playlists, tracks, albums, artists, users RESTART IDENTITY CASCADE",
   );
 
   const user = await client.query(
-    "insert into users (email, name, avatar_url, tier) values ('demo@aura.fm','AURA Listener','https://picsum.photos/seed/aura-user/200/200','ultimate') returning id",
+    // No shared "demo" account: the seeder simply owns its catalog rows. Every
+    // visitor gets their own signed session user at runtime.
+    "insert into users (email, name, avatar_url, tier) values ('seed@donmuse.local','DON MUSE Seed','/logo.svg','ultimate') returning id",
   );
   const userId = user.rows[0].id;
 

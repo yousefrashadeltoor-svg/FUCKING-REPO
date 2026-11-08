@@ -110,5 +110,7 @@ export const SCHEMA_SQL: string[] = [
   // OAuth accounts (Google / YouTube) — additive, never destructive.
   "CREATE TABLE IF NOT EXISTS oauth_accounts (id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider text NOT NULL DEFAULT 'google', external_id text, email text, name text, avatar_url text, scopes text NOT NULL DEFAULT '', refresh_token_enc text, access_token_enc text, expires_at timestamp, channel_id text, channel_title text, created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now())",
   "CREATE UNIQUE INDEX IF NOT EXISTS oauth_user_provider_idx ON oauth_accounts (user_id, provider)",
-  "INSERT INTO users (email, name, avatar_url, tier) VALUES ('demo@aura.fm','DON MUSE Listener','/logo.svg','ultimate') ON CONFLICT (email) DO NOTHING"
+  // NOTE: no shared "demo" account is created any more — every visitor gets their
+  // own signed session user (src/lib/server/session.ts). The old row is left
+  // untouched so nothing a user stored under it is lost.
 ];
