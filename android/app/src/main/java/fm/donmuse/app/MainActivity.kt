@@ -1,9 +1,7 @@
 package fm.donmuse.app
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,16 +16,15 @@ import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.ViewCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import fm.donmuse.app.bridge.NativeBridge
 import fm.donmuse.app.bridge.NativeEvents
-import fm.donmuse.app.bridge.PendingPermissions
 import fm.donmuse.app.data.OfflineWeb
 import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.PlaybackService
@@ -86,6 +83,13 @@ class MainActivity : ComponentActivity() {
             setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         }
         setContentView(webView)
+        // The activity is edge-to-edge; keep the app inside the actual safe area.
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(webView)
 
         bridge = NativeBridge(this, webView, permissionLauncher, manageStorageLauncher)
         webView.addJavascriptInterface(bridge, "DonMuseNative")
@@ -131,7 +135,7 @@ class MainActivity : ComponentActivity() {
                 request: WebResourceRequest,
             ): WebResourceResponse? {
                 val url = request.url
-                if (!OfflineWeb.isOurs(url)) return null
+                if (!OfflineWeb.isOurs(url) || OfflineWeb.isApiPath(url)) return null
                 // Always serve the packaged appassets origin locally. Never
                 // replace a missing local interface by silently loading the web host.
                 return OfflineWeb.resolve(
@@ -180,7 +184,6 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        requestStartupPermissions()
         webView.loadUrl(firstUrl(intent))
     }
 
@@ -206,24 +209,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Android 13+ media/notification permissions + storage on older versions. */
-    private fun requestStartupPermissions() {
-        val wanted = mutableListOf(Manifest.permission.POST_NOTIFICATIONS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            wanted += Manifest.permission.READ_MEDIA_AUDIO
-            wanted += Manifest.permission.READ_MEDIA_VIDEO
-            wanted += Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            wanted += Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        val missing = wanted.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isNotEmpty()) {
-            PendingPermissions.pending = missing.toTypedArray()
-            permissionLauncher.launch(missing.toTypedArray())
-        }
-    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
