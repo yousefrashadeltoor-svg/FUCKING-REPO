@@ -23,8 +23,8 @@
   try {
     if (window.DonMuseNative && typeof window.DonMuseNative.platformInfo === "function") {
       var nativeInfo = JSON.parse(window.DonMuseNative.platformInfo() || "{}");
-      var apiBase = typeof nativeInfo.server === "string" ? nativeInfo.server.replace(/\\/+$/, "") : "";
-      if (/^https?:\\/\\//i.test(apiBase)) window.__DM_API_BASE__ = apiBase;
+      var apiBase = typeof nativeInfo.server === "string" ? nativeInfo.server.replace(/\/+$/, "") : "";
+      if (/^https?:\/\//i.test(apiBase)) window.__DM_API_BASE__ = apiBase;
     }
   } catch (e) { /* local UI remains usable without a native bridge */ }
 
