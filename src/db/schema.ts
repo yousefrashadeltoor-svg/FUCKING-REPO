@@ -254,6 +254,37 @@ export const listeningHistory = pgTable(
   ],
 );
 
+/**
+ * Encrypted Google/YouTube OAuth tokens, one row per DON MUSE user.
+ * The refresh token is AES-256-GCM encrypted with GOOGLE_TOKEN_KEY; the access
+ * token is cached in memory only. Nothing here is ever exposed to the browser.
+ */
+export const oauthAccounts = pgTable(
+  "oauth_accounts",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("google"),
+    /** Google account subject (sub) — stable id, not the email */
+    externalId: text("external_id"),
+    email: text("email"),
+    name: text("name"),
+    avatarUrl: text("avatar_url"),
+    scopes: text("scopes").notNull().default(""),
+    /** AES-256-GCM: iv.tag.ciphertext, all base64url */
+    refreshTokenEnc: text("refresh_token_enc"),
+    accessTokenEnc: text("access_token_enc"),
+    expiresAt: timestamp("expires_at"),
+    channelId: text("channel_id"),
+    channelTitle: text("channel_title"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("oauth_user_provider_idx").on(t.userId, t.provider)],
+);
+
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
@@ -279,3 +310,4 @@ export type PlaylistTrackRow = typeof playlistTracks.$inferSelect;
 export type ListeningHistoryRow = typeof listeningHistory.$inferSelect;
 export type ArtistFollowRow = typeof artistFollows.$inferSelect;
 export type AlbumLikeRow = typeof albumLikes.$inferSelect;
+export type OAuthAccountRow = typeof oauthAccounts.$inferSelect;

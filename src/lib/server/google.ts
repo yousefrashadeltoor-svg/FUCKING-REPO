@@ -13,12 +13,31 @@ const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/youtube/v3";
 
+/**
+ * Scopes we ask for, and why (no more than needed to make the UI real):
+ *   youtube          → subscriptions, playlists, ratings, channel data
+ *   youtube.force-ssl→ comments / comment threads (write)
+ *   youtube.upload   → uploading a video the user owns
+ *   openid/email/profile → identity shown in the profile header
+ * Read-only is NOT enough for subscribe/like/comment/upload, which is why the
+ * previous `youtube.readonly` build could not deliver those features at all.
+ */
 export const GOOGLE_SCOPES = [
-  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
+  "https://www.googleapis.com/auth/youtube.upload",
   "openid",
   "email",
   "profile",
 ].join(" ");
+
+/** Scopes the UI can honestly offer as "connected" features. */
+export const CAPABILITIES = {
+  read: "https://www.googleapis.com/auth/youtube.readonly",
+  write: "https://www.googleapis.com/auth/youtube",
+  comments: "https://www.googleapis.com/auth/youtube.force-ssl",
+  upload: "https://www.googleapis.com/auth/youtube.upload",
+};
 
 export interface GoogleConfig {
   clientId: string;
@@ -134,6 +153,43 @@ export function decodeTokens(raw: string | undefined): TokenSet | null {
     return obj?.access_token ? obj : null;
   } catch {
     return null;
+  }
+}
+
+/** Bearer-token call to the Data API (used by routes that already resolved a token). */
+export async function ytFetch<T>(
+  path: string,
+  params: Record<string, string>,
+  accessToken: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<{ data: T | null; error?: string; status: number }> {
+  const url = `${API}/${path}?${new URLSearchParams(params).toString()}`;
+  try {
+    const res = await fetch(url, {
+      method: init.method ?? "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let message = `HTTP ${res.status}`;
+      try {
+        const parsed = JSON.parse(text) as { error?: { message?: string; errors?: { reason?: string }[] } };
+        if (parsed.error?.message) message = parsed.error.message;
+      } catch {
+        if (text) message = `${message}: ${text.slice(0, 160)}`;
+      }
+      return { data: null, status: res.status, error: message };
+    }
+    if (res.status === 204) return { data: null, status: 204 };
+    return { data: (await res.json()) as T, status: res.status };
+  } catch (err) {
+    return { data: null, status: 0, error: err instanceof Error ? err.message : "network error" };
   }
 }
 
