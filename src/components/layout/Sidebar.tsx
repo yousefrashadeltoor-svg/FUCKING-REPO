@@ -149,7 +149,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "glass-panel z-20 hidden shrink-0 flex-col gap-1 rounded-2xl md:flex",
+        "glass-panel z-20 hidden shrink-0 flex-col gap-1 rounded-2xl lg:flex",
         collapsed ? "w-[64px] items-center p-2" : "w-[212px] p-3 max-[900px]:w-[168px]",
       )}
     >

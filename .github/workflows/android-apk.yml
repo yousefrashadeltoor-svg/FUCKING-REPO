@@ -55,10 +55,13 @@ jobs:
           test -f out-offline/index.html || { echo "::error::Offline bundle missing index.html"; exit 1; }
           test -f out-offline/radio/index.html || { echo "::error::Offline bundle is missing routes"; exit 1; }
           test -d out-offline/api-snapshot || { echo "::error::Offline bundle has no api snapshots"; exit 1; }
-          test -f out-offline/_next/static/chunks/*.css || { echo "::error::Offline bundle has no CSS — the UI would render unstyled"; exit 1; }
+          test -n "$(find out-offline/_next/static -type f -name '*.js' -print -quit)" || { echo "::error::Offline bundle has no JavaScript chunks"; exit 1; }
+          test -n "$(find out-offline/_next/static -type f -name '*.css' -print -quit)" || { echo "::error::Offline bundle has no CSS chunks"; exit 1; }
           mkdir -p android/app/src/main/assets
           rm -rf android/app/src/main/assets/www
           cp -r out-offline android/app/src/main/assets/www
+          test -n "$(find android/app/src/main/assets/www/_next/static -type f -name '*.js' -print -quit)" || { echo "::error::Next.js JavaScript chunks were not copied"; exit 1; }
+          test -n "$(find android/app/src/main/assets/www/_next/static -type f -name '*.css' -print -quit)" || { echo "::error::Next.js CSS chunks were not copied"; exit 1; }
           echo "bundled $(find android/app/src/main/assets/www -type f | wc -l) files into assets/www"
 
       # Install the SDK explicitly: the runner's default image no longer
@@ -132,6 +135,35 @@ jobs:
             echo "::error title=Release APK failed::$errs"
             exit 1
           fi
+
+      - name: Verify UI files inside both APKs
+        run: |
+          python3 - <<'PY'
+          import zipfile
+
+          apks = {
+              "debug": "android/app/build/outputs/apk/debug/app-debug.apk",
+              "release": "android/app/build/outputs/apk/release/app-release.apk",
+          }
+          required = (
+              "assets/www/index.html",
+              "assets/www/radio/index.html",
+              "assets/www/quran/index.html",
+              "assets/www/settings/index.html",
+              "assets/www/api-snapshot/index.json",
+          )
+          for kind, apk_path in apks.items():
+              with zipfile.ZipFile(apk_path) as apk:
+                  names = set(apk.namelist())
+              missing = [path for path in required if path not in names]
+              js = [name for name in names if name.startswith("assets/www/_next/static/") and name.endswith(".js")]
+              css = [name for name in names if name.startswith("assets/www/_next/static/") and name.endswith(".css")]
+              if missing or not js or not css:
+                  raise SystemExit(
+                      f"::error::{kind} APK is incomplete: missing={missing}, JS chunks={len(js)}, CSS chunks={len(css)}"
+                  )
+              print(f"{kind}: offline screens OK · {len(js)} JS chunks · {len(css)} CSS files")
+          PY
 
       - uses: actions/upload-artifact@v5
         with:

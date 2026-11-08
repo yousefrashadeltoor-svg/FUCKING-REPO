@@ -26,6 +26,26 @@ android {
 
     }
 
+    // AAPT's default ignore list contains "<dir>_*", which removes Next.js'
+    // required "_next" directory from the APK. Keep the normal junk-file rules
+    // but remove only that directory rule so every JS/CSS chunk is packaged.
+    androidResources {
+        ignoreAssetsPatterns.clear()
+        ignoreAssetsPatterns.addAll(
+            listOf(
+                "!.svn",
+                "!.git",
+                "!.ds_store",
+                "!*.scc",
+                ".*",
+                "!CVS",
+                "!thumbs.db",
+                "!picasa.ini",
+                "!*~",
+            )
+        )
+    }
+
     buildFeatures {
         compose = false
         buildConfig = true

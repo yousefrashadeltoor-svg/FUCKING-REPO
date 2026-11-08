@@ -21,6 +21,7 @@
 //
 //  Usage: npm run build && node scripts/offline-bundle.mjs
 // ============================================================================
+import { createHash } from "node:crypto";
 import { mkdir, writeFile, readFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -145,6 +146,56 @@ for (const url of API_GETS) {
   }
 }
 
+// Capture real detail screens referenced by the offline home catalogue so
+// track, artist, album and playlist links still open their matching interface.
+const detailCandidates = new Set();
+const detailCounts = { track: 0, artist: 0, album: 0, playlist: 0 };
+const detailLimits = { track: 12, artist: 8, album: 8, playlist: 6 };
+function addDetail(kind, id) {
+  if (id === null || id === undefined || !/^\d+$/.test(String(id))) return;
+  if (detailCounts[kind] >= detailLimits[kind]) return;
+  const route = kind === "track" ? `track/${id}` : `${kind}s/${id}`;
+  if (detailCandidates.has(route)) return;
+  detailCandidates.add(route);
+  detailCounts[kind]++;
+}
+try {
+  const home = JSON.parse(apis.get("/api/home") || "{}");
+  for (const section of home.sections || []) {
+    for (const item of section.items || []) {
+      if (section.kind === "tracks") {
+        addDetail("track", item.id);
+        addDetail("artist", item.artistId);
+        addDetail("album", item.albumId);
+      } else if (section.kind === "artists") {
+        addDetail("artist", item.id);
+      } else if (section.kind === "playlists") {
+        addDetail("playlist", item.id);
+      }
+    }
+  }
+} catch {
+  /* A missing home snapshot must not break the rest of the offline package. */
+}
+const detailQueue = [...detailCandidates];
+let detailIndex = 0;
+await Promise.all(Array.from({ length: 4 }, async () => {
+  while (detailIndex < detailQueue.length) {
+    const route = detailQueue[detailIndex++];
+    try {
+      const response = await fetch(`${origin}/${route}`, { signal: AbortSignal.timeout(45_000) });
+      if (!response.ok) continue;
+      const html = await response.text();
+      if (!html.includes("<html")) continue;
+      pages.set(route, html);
+      ROUTES.push(route);
+      console.log(`  ✓ detail page /${route} (${(html.length / 1024).toFixed(0)} kB)`);
+    } catch (err) {
+      console.warn(`  ! detail page /${route}: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+}));
+
 stopServer();
 
 const shell = pages.get("");
@@ -163,16 +214,35 @@ async function copyDir(from, to) {
   for (const entry of await readdir(from, { withFileTypes: true })) {
     const src = path.join(from, entry.name);
     const dst = path.join(to, entry.name);
-    if (entry.isDirectory()) await copyDir(src, dst);
-    else if (entry.isFile()) {
+    // Follow linked build outputs too; silently skipping one omits client code.
+    const info = await stat(src).catch(() => null);
+    if (info?.isDirectory()) await copyDir(src, dst);
+    else if (info?.isFile()) {
       await mkdir(path.dirname(dst), { recursive: true });
       await writeFile(dst, await readFile(src));
     }
   }
 }
 
-// hashed client chunks + css
+// Next.js JavaScript and CSS must exist in the offline bundle.
 await copyDir(path.join(nextDir, "static"), path.join(out, "_next", "static"));
+async function countFilesByExtension(dir, extension) {
+  if (!existsSync(dir)) return 0;
+  let count = 0;
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const child = path.join(dir, entry.name);
+    if (entry.isDirectory()) count += await countFilesByExtension(child, extension);
+    else if (entry.isFile() && entry.name.endsWith(extension)) count++;
+  }
+  return count;
+}
+const jsChunkCount = await countFilesByExtension(path.join(out, "_next", "static"), ".js");
+const cssChunkCount = await countFilesByExtension(path.join(out, "_next", "static"), ".css");
+if (!jsChunkCount || !cssChunkCount) {
+  console.error(`✗ Next.js assets are incomplete: ${jsChunkCount} JS chunks, ${cssChunkCount} CSS files. Refusing to create a broken APK.`);
+  process.exit(1);
+}
+console.log(`  ✓ local Next.js assets: ${jsChunkCount} JS chunks · ${cssChunkCount} CSS files`);
 // public/ (logos, manifest, offline page)
 await copyDir(path.join(root, "public"), out);
 
@@ -218,6 +288,76 @@ if (missing.length && (await waitForServer())) {
   }
 }
 extraServer.kill("SIGTERM");
+
+/* ----------------------- 4b. cache visible artwork ----------------------- */
+const remoteImages = new Set();
+const imageField = /(?:image|cover|artwork|avatar|thumbnail|thumb|poster|banner|logo|icon)/i;
+const imageFile = /\.(?:avif|gif|jpe?g|png|webp|svg)(?:$|[?#])/i;
+function addRemoteImage(value) {
+  if (typeof value !== "string" || !/^https:\/\//i.test(value)) return;
+  try {
+    const u = new URL(value);
+    if (u.protocol === "https:" && (imageField.test(u.pathname) || imageFile.test(u.pathname))) remoteImages.add(value);
+  } catch { /* ignore invalid URLs */ }
+}
+for (const body of pages.values()) {
+  for (const tag of body.matchAll(/<(?:img|source|meta)\b[^>]*>/gi)) {
+    for (const attr of tag[0].matchAll(/\b(?:src|data-src|poster|srcset|content)\s*=\s*["']([^"']+)["']/gi)) {
+      for (const candidate of attr[1].split(",").map((part) => part.trim().split(/\s+/)[0])) addRemoteImage(candidate);
+    }
+  }
+}
+function collectRemoteImages(value, key = "", inherited = false) {
+  const inImageField = inherited || imageField.test(key);
+  if (typeof value === "string") {
+    if (inImageField || imageFile.test(value)) addRemoteImage(value);
+  } else if (Array.isArray(value)) {
+    for (const child of value) collectRemoteImages(child, key, inImageField);
+  } else if (value && typeof value === "object") {
+    for (const [childKey, child] of Object.entries(value)) collectRemoteImages(child, childKey, inImageField);
+  }
+}
+for (const body of apis.values()) {
+  try { collectRemoteImages(JSON.parse(body)); } catch { /* not JSON */ }
+}
+const artworkMap = new Map();
+const artworkDir = path.join(out, "media-cache");
+await mkdir(artworkDir, { recursive: true });
+const artworkQueue = [...remoteImages].slice(0, 80);
+const artworkMaxFile = 1024 * 1024;
+const artworkMaxTotal = 12 * 1024 * 1024;
+const artworkExt = {
+  "image/avif": ".avif", "image/gif": ".gif", "image/jpeg": ".jpg",
+  "image/png": ".png", "image/svg+xml": ".svg", "image/webp": ".webp",
+};
+let artworkIndex = 0;
+let artworkBytes = 0;
+await Promise.all(Array.from({ length: 4 }, async () => {
+  while (artworkIndex < artworkQueue.length && artworkBytes < artworkMaxTotal) {
+    const remote = artworkQueue[artworkIndex++];
+    try {
+      const response = await fetch(remote, { headers: { Accept: "image/avif,image/webp,image/*" }, signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) continue;
+      const mime = (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+      if (!mime.startsWith("image/") || Number(response.headers.get("content-length") || 0) > artworkMaxFile) continue;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > artworkMaxFile || artworkBytes + bytes.length > artworkMaxTotal) continue;
+      const ext = artworkExt[mime] || path.extname(new URL(remote).pathname).toLowerCase() || ".img";
+      const filename = createHash("sha256").update(remote).digest("hex").slice(0, 24) + ext;
+      await writeFile(path.join(artworkDir, filename), bytes);
+      artworkMap.set(remote, "/media-cache/" + filename);
+      artworkBytes += bytes.length;
+    } catch { /* artwork host is optional; all app chrome stays local */ }
+  }
+}));
+function rewriteArtwork(source) {
+  let result = source;
+  for (const [remote, local] of artworkMap) result = result.split(remote).join(local);
+  return result;
+}
+for (const [route, html] of pages) pages.set(route, rewriteArtwork(html));
+for (const [url, body] of apis) apis.set(url, rewriteArtwork(body));
+console.log(`  ✓ offline artwork: ${artworkMap.size} cached images · ${(artworkBytes / 1048576).toFixed(1)} MB`);
 
 /* --------------------------- 5. API snapshots ----------------------------- */
 const apiDir = path.join(out, "api-snapshot");
@@ -269,7 +409,8 @@ const runtimeTemplate = await readFile(path.join(root, "scripts", "offline-runti
 const RUNTIME = `<script>\n${runtimeTemplate}\n</script>`;
 
 function runtimeFor(route, snapshotJson) {
-  const rel = route === "" ? "./" : "../";
+  const depth = route.split("/").filter(Boolean).length;
+  const rel = depth === 0 ? "./" : "../".repeat(depth);
   const values = {
     "@@DM_ROOT@@": rel,
     "@@DM_PAGE@@": route,
@@ -287,11 +428,11 @@ function runtimeFor(route, snapshotJson) {
 }
 
 function transform(page, route, snapshotJson) {
-  const rel = route === "" ? "./" : "../";
-  let html = page
-    // drop the RSC flight payload (server-only data)
-    .replace(/<script>self\.__next_f[\s\S]*?<\/script>/g, "")
-    .replace(/<script[^>]*src="[^"]*__next_f[^"]*"[^>]*><\/script>/g, "");
+  const depth = route.split("/").filter(Boolean).length;
+  const rel = depth === 0 ? "./" : "../".repeat(depth);
+  // Keep Next.js Flight/RSC bootstrap scripts intact so React can hydrate
+  // client components and wire up the original controls; only asset URLs move.
+  let html = page;
   // every absolute asset URL becomes relative to this page
   html = html.replace(/((?:href|src|srcset|poster)=")\/(?!\/)/g, `$1${rel}`);
   html = html.replace("</head>", `${runtimeFor(route, snapshotJson)}\n</head>`);

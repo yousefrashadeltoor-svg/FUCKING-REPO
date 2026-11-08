@@ -21,7 +21,7 @@ export function MobileNav() {
   const pathname = usePathname();
   const t = useT();
   return (
-    <nav className="glass-player z-30 mx-2 mb-2 flex items-center justify-around rounded-2xl px-1 py-1.5 md:hidden">
+    <nav className="glass-player z-30 mx-2 mb-2 flex w-auto min-w-0 max-w-[calc(100vw-1rem)] items-center justify-around rounded-2xl px-1 py-1.5 lg:hidden">
       {ITEMS.map((it) => {
         const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
         const Icon = it.icon;

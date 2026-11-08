@@ -132,10 +132,8 @@ class MainActivity : ComponentActivity() {
             ): WebResourceResponse? {
                 val url = request.url
                 if (!OfflineWeb.isOurs(url)) return null
-                if (!hasBundledUi()) {
-                    // No bundle in this build: let the hosted site answer.
-                    return null
-                }
+                // Always serve the packaged appassets origin locally. Never
+                // replace a missing local interface by silently loading the web host.
                 return OfflineWeb.resolve(
                     this@MainActivity,
                     OfflineWeb.pathOf(url),

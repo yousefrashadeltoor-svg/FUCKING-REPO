@@ -61,7 +61,18 @@
 
   /** "/radio" → the static page that actually exists. */
   function routeHref(href) {
-    if (!href || href.charAt(0) !== "/" || href.charAt(1) === "/") return null;
+    if (!href) return null;
+    // The offline HTML is nested in route folders, so internal anchors may be
+    // relative ("../search"). Resolve them against the current local origin
+    // before checking the route allow-list. External links remain untouched.
+    try {
+      var resolved = new URL(href, window.location.href);
+      if (resolved.origin !== window.location.origin) return null;
+      href = resolved.pathname + resolved.search + resolved.hash;
+    } catch (e) {
+      return null;
+    }
+    if (href.charAt(0) !== "/" || href.charAt(1) === "/") return null;
     var hashSplit = href.split("#");
     var hash = hashSplit.length > 1 ? "#" + hashSplit.slice(1).join("#") : "";
     var querySplit = hashSplit[0].split("?");

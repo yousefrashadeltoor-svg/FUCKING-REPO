@@ -75,9 +75,27 @@ class DonMuseApp : Application() {
          * (`app/src/main/assets/www/index.html`), otherwise from the hosted
          * build — so the APK always opens something real.
          */
+        private fun hasAssetWithExtension(ctx: Context, folder: String, extension: String): Boolean {
+            return ctx.assets.list(folder).orEmpty().any { name ->
+                if (name.endsWith(extension, ignoreCase = true)) {
+                    true
+                } else if (!name.contains('.')) {
+                    hasAssetWithExtension(ctx, "$folder/$name", extension)
+                } else {
+                    false
+                }
+            }
+        }
+
         fun hasBundledUi(ctx: Context): Boolean = runCatching {
-            ctx.assets.open("www/index.html").close()
-            true
+            ctx.assets.open("www/index.html").use { }
+            val hasJavaScript = hasAssetWithExtension(ctx, "www/_next/static", ".js")
+            val hasStyles = hasAssetWithExtension(ctx, "www/_next/static", ".css")
+            val hasRoutes = listOf("radio", "quran", "settings", "search").all { route ->
+                ctx.assets.open("www/$route/index.html").use { }
+                true
+            }
+            hasJavaScript && hasStyles && hasRoutes
         }.getOrDefault(false)
 
         /**
@@ -88,9 +106,9 @@ class DonMuseApp : Application() {
          * file:// pages get no shared origin in a WebView, which is what made
          * images, styles and in-app links fail. See data/OfflineWeb.kt.
          */
-        fun startUrl(ctx: Context): String =
-            if (hasBundledUi(ctx)) OfflineWeb.url("/")
-            else "https://$WEB_HOST"
+        // The app shell always opens from its packaged local files. Network is
+        // optional for live streams, login and remote catalogue operations only.
+        fun startUrl(ctx: Context): String = OfflineWeb.url("/")
 
         /**
          * Deep link → concrete URL for either host.
@@ -99,10 +117,7 @@ class DonMuseApp : Application() {
          */
         fun routeUrl(ctx: Context, path: String): String {
             val clean = path.trim('/').split('?').first().split('#').first()
-            if (hasBundledUi(ctx)) {
-                return if (clean.isEmpty()) OfflineWeb.url("/") else OfflineWeb.url("/$clean")
-            }
-            return if (clean.isEmpty()) startUrl(ctx) else "https://$WEB_HOST/$clean"
+            return if (clean.isEmpty()) startUrl(ctx) else OfflineWeb.url("/$clean")
         }
     }
 }
