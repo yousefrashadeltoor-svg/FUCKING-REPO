@@ -113,13 +113,32 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/outputs/apk/release/*.apk
 
-      - name: Attach APKs to a rolling release
-        if: github.ref == 'refs/heads/main'
+      # Stable, guessable file names so a direct download link never changes.
+      - name: Name the APKs
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/apk-out
+          for kind in debug release; do
+            f=$(ls android/app/build/outputs/apk/$kind/*.apk 2>/dev/null | head -1 || true)
+            [ -n "$f" ] && cp "$f" "/tmp/apk-out/don-muse-$kind.apk"
+          done
+          ls -l /tmp/apk-out
+
+      # Publish on every branch build (not just main) so the branch that is being
+      # tested always has a downloadable APK. `make_latest: false` keeps a branch
+      # build from claiming "latest".
+      - name: Publish APKs to a rolling release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
           name: DON MUSE — latest APK
-          body: Automatically built from the latest main branch.
+          make_latest: false
+          body: |
+            Automatically built APK, rebuilt from `${{ github.ref_name }}` on every push.
+
+            * `don-muse-debug.apk` — debug-signed, installs anywhere
+            * `don-muse-release.apk` — release build (debug-signed unless keystore secrets are set)
           files: |
-            android/app/build/outputs/apk/debug/*.apk
-            android/app/build/outputs/apk/release/*.apk
+            /tmp/apk-out/don-muse-debug.apk
+            /tmp/apk-out/don-muse-release.apk
