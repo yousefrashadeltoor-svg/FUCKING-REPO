@@ -48,6 +48,7 @@ const ROUTES = [
   "about",
   "diagnostics",
   "youtube-profile",
+  "watch",
 ];
 
 /* ------------------------- 1. start a temporary server -------------------- */

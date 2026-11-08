@@ -2,8 +2,15 @@ name: Build DON MUSE APK
 
 on:
   push:
-    branches: [main]
-    paths: ["android/**", ".github/workflows/android-apk.yml"]
+    branches: [main, "arena/**"]
+    paths:
+      - "android/**"
+      - "src/**"
+      - "public/**"
+      - "scripts/**"
+      - "next.config.ts"
+      - "package.json"
+      - ".github/workflows/android-apk.yml"
   pull_request:
     paths: ["android/**"]
   workflow_dispatch:
@@ -38,13 +45,15 @@ jobs:
           NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
           NEXT_TELEMETRY_DISABLED: "1"
         run: |
-          npm ci --ignore-scripts || npm install --ignore-scripts
+          npm ci --ignore-scripts
           npm run build
           node scripts/gh-pages-export.mjs
+          test -d out || { echo "::error::Static export produced no out/ directory"; exit 1; }
+          test -f out/index.html || { echo "::error::out/index.html is missing — the APK would ship an empty UI"; exit 1; }
           mkdir -p android/app/src/main/assets
           rm -rf android/app/src/main/assets/www
           cp -r out android/app/src/main/assets/www
-        continue-on-error: true
+          echo "bundled $(find out -type f | wc -l) files into assets/www"
 
       - uses: android-actions/setup-android@v3
 
