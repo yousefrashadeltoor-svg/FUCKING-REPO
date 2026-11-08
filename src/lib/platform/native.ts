@@ -173,17 +173,9 @@ export async function requestMediaPermissionsAsync(
       resolve(granted);
     };
     const timeout = window.setTimeout(() => finish(required.every((kind) => hasMediaPermission(kind))), 120_000);
-    registry.__donmusePermissions = (raw) => {
-      // NativeEvents sends a JSON string after Android closes the dialog.
-      try {
-        const result = parse<{ granted?: string[]; denied?: string[] }>(
-          typeof raw === "string" ? raw : JSON.stringify(raw),
-          {},
-        );
-        finish(required.every((kind) => hasMediaPermission(kind)));
-      } catch {
-        finish(required.every((kind) => hasMediaPermission(kind)));
-      }
+    registry.__donmusePermissions = () => {
+      // NativeEvents calls this only after Android has closed the dialog.
+      finish(required.every((kind) => hasMediaPermission(kind)));
     };
     try {
       b.requestPermissions(kinds.join(","));
