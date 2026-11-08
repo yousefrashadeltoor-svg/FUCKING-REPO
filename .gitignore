@@ -2,7 +2,8 @@ node_modules/
 .next/
 out/
 dist/
-data/
+# local PGlite database at the repo root only — NOT android/.../app/data/
+/data/
 .env*.local
 tsconfig.tsbuildinfo
 *.zip
