@@ -235,6 +235,9 @@ export function installPlaybackController(): () => void {
     engine.setMuted(s.muted);
     engine.setPlaybackRate(s.playbackRate);
     engine.setEq(s.eqBands);
+    engine.setBassBoost(s.bassBoost);
+    engine.setPreamp(s.preamp);
+    engine.setBalance(s.balance);
   });
 
   const unsubSettings = useSettingsStore.subscribe(() => {

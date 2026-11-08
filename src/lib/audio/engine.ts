@@ -76,6 +76,15 @@ export class UniversalPlaybackEngine {
   private els: HTMLAudioElement[] = [];
   private elGains: GainNode[] = [];
   private eqChains: BiquadFilterNode[][] = [];
+  /** shared low-shelf bass boost (all elements) */
+  private bassNode: BiquadFilterNode | null = null;
+  /** master pre-amp gain, applied before the EQ so boosts cannot clip */
+  private preampNode: GainNode | null = null;
+  /** L/R balance splitter */
+  private panner: StereoPannerNode | null = null;
+  private bassBoost = 0;
+  private preampDb = 0;
+  private balance = 0;
   private active = 0;
 
   /* -------------------------------- state --------------------------------- */
@@ -122,7 +131,19 @@ export class UniversalPlaybackEngine {
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 2048;
       this.analyser.smoothingTimeConstant = 0.82;
-      this.master.connect(comp);
+      // Bass boost → pre-amp → stereo balance → (compressor) → analyser
+      this.bassNode = this.ctx.createBiquadFilter();
+      this.bassNode.type = "lowshelf";
+      this.bassNode.frequency.value = 120;
+      this.bassNode.gain.value = this.bassBoost;
+      this.preampNode = this.ctx.createGain();
+      this.preampNode.gain.value = this.dbToLinear(this.preampDb);
+      this.panner = this.ctx.createStereoPanner();
+      this.panner.pan.value = this.balance;
+      this.master.connect(this.bassNode);
+      this.bassNode.connect(this.preampNode);
+      this.preampNode.connect(this.panner);
+      this.panner.connect(comp);
       comp.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
 
@@ -284,6 +305,34 @@ export class UniversalPlaybackEngine {
     this.loudnessNormalization = on;
     this.normGain = this.current && on ? this.computeNormGain(this.current) : 1;
     this.applyVolume();
+  }
+
+  private dbToLinear(db: number): number {
+    return Math.pow(10, db / 20);
+  }
+
+  /** Extra <120 Hz shelf on top of the graphic EQ. */
+  setBassBoost(db: number) {
+    this.bassBoost = clamp(db, -12, 12);
+    if (this.bassNode && this.ctx) {
+      this.bassNode.gain.setTargetAtTime(this.bassBoost, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  /** Master pre-amp; lowering it is how the user avoids clipping with a hot EQ. */
+  setPreamp(db: number) {
+    this.preampDb = clamp(db, -12, 12);
+    if (this.preampNode && this.ctx) {
+      this.preampNode.gain.setTargetAtTime(this.dbToLinear(this.preampDb), this.ctx.currentTime, 0.02);
+    }
+  }
+
+  /** Stereo balance: -1 hard left, 0 centre, +1 hard right. */
+  setBalance(v: number) {
+    this.balance = clamp(v, -1, 1);
+    if (this.panner && this.ctx) {
+      this.panner.pan.setTargetAtTime(this.balance, this.ctx.currentTime, 0.02);
+    }
   }
 
   setEq(bands: number[]) {
