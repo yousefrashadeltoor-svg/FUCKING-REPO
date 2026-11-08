@@ -39,7 +39,8 @@ export function MobileNav() {
       className="glass-player z-30 mx-2 mb-2 grid w-auto min-w-0 max-w-[calc(100vw-1rem)] grid-cols-9 gap-x-0.5 gap-y-0.5 rounded-2xl px-1.5 py-1.5 lg:hidden"
     >
       {ITEMS.map((it) => {
-        const active = !it.external && (it.href === "/" ? pathname === "/" : pathname.startsWith(it.href));
+        const external = "external" in it && it.external === true;
+        const active = !external && (it.href === "/" ? pathname === "/" : pathname.startsWith(it.href));
         const Icon = it.icon;
         const label = "label" in it ? it.label : t(it.key);
         const className = cn(
@@ -53,7 +54,7 @@ export function MobileNav() {
           </>
         );
 
-        return it.external ? (
+        return external ? (
           <a key={it.href} href={it.href} target="_blank" rel="noopener noreferrer" className={className} aria-label={label} title={label}>
             {content}
           </a>
