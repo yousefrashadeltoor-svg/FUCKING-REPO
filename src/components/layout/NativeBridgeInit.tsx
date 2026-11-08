@@ -11,7 +11,6 @@ import {
   isNativeHost,
   nativePlayback,
   refreshWidgets,
-  requestMediaPermissions,
 } from "@/lib/platform/native";
 import { usePlayerStore } from "@/stores/player-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -22,9 +21,6 @@ export function NativeBridgeInit() {
   useEffect(() => {
     if (!isNativeHost() || booted) return;
     booted = true;
-
-    // Permission prompts (Android 13+ media + notifications).
-    requestMediaPermissions(["audio", "video", "notifications"]);
 
     const s = usePlayerStore.getState();
     nativePlayback.setVolume(s.muted ? 0 : s.volume);
