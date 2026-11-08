@@ -7,9 +7,14 @@ android {
     namespace = "fm.donmuse.app"
     compileSdk = 35
 
-    val webHost: String = (project.findProperty("webHost") as String?)
+    val configuredWebHost: String? = (project.findProperty("webHost") as String?)
         ?: System.getenv("DONMUSE_WEB_HOST")
-        ?: "donmuse.pages.dev"
+    val webHost: String = (configuredWebHost ?: "")
+        .trim()
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .trimEnd('/')
+        .ifBlank { "donmuse.pages.dev" }
 
     defaultConfig {
         applicationId = "fm.donmuse.app"
