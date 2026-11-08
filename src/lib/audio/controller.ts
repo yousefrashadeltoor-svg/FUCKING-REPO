@@ -291,21 +291,21 @@ export function installPlaybackController(): () => void {
       // official YouTube iframe or the browser audio backend.
       if (engine.backend !== "native") return;
       const cur = store.getState();
-      if (!cur.currentTrack) return;
-      const nativeIndex = st.itemId
-        ? cur.queue.findIndex((t) => `${t.source}:${t.sourceId ?? ""}:${t.id}` === st.itemId)
-        : -1;
-      if (nativeIndex >= 0 && nativeIndex !== cur.index) {
-        const nextTrack = cur.queue[nativeIndex];
-        if (nextTrack) {
-          engine.adoptNativeTrack(nextTrack);
-          store.setState({
-            index: nativeIndex,
-            currentTrack: nextTrack,
-            positionSec: Math.max(0, st.positionMs / 1000),
-            durationSec: Math.max(0, st.durationMs / 1000),
-          });
-        }
+      if (!cur.currentTrack || !st.itemId) return; // ignore delayed "stopped" callbacks
+      const nativeIndex = cur.queue.findIndex(
+        (t) => `${t.source}:${t.sourceId ?? ""}:${t.id}` === st.itemId,
+      );
+      if (nativeIndex < 0) return; // stale event from a previous queue
+      const nextTrack = cur.queue[nativeIndex];
+      if (!nextTrack) return;
+      if (nativeIndex !== cur.index) {
+        engine.adoptNativeTrack(nextTrack);
+        store.setState({
+          index: nativeIndex,
+          currentTrack: nextTrack,
+          positionSec: Math.max(0, st.positionMs / 1000),
+          durationSec: Math.max(0, st.durationMs / 1000),
+        });
       } else {
         store.setState({
           ...(st.durationMs > 0 ? { durationSec: st.durationMs / 1000 } : {}),
