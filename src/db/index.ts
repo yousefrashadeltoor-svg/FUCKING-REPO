@@ -41,7 +41,13 @@ export let pool: Pool | undefined;
 
 if (!globalForDb.__donmuseDb) {
   if (useLocal) {
-    const pg = globalForDb.__donmusePglite ?? new PGlite(localDir());
+    // Vercel Functions run from a read-only deployment filesystem. Keep the
+    // no-DATABASE_URL fallback in memory there instead of trying to create
+    // ./data/pglite under /var/task. This is only a temporary compatibility
+    // fallback: production persistence still requires a shared DATABASE_URL.
+    const pg = globalForDb.__donmusePglite ?? new PGlite(
+      process.env.VERCEL === "1" ? undefined : localDir(),
+    );
     globalForDb.__donmusePglite = pg;
     globalForDb.__donmuseDb = drizzlePglite(pg);
   } else {
