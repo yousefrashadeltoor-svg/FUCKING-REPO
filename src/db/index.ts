@@ -32,7 +32,13 @@ const globalForDb = globalThis as typeof globalThis & {
 
 function localDir(): string {
   const fromUrl = databaseUrl?.startsWith("pglite:") ? databaseUrl.slice("pglite:".length) : "";
-  const dir = fromUrl || process.env.DONMUSE_DATA_DIR || path.join(process.cwd(), "data", "pglite");
+  // Vercel's deployed function bundle (/var/task) is read-only. Use its
+  // writable temporary directory for the embedded fallback. This storage is
+  // ephemeral per function instance; production must set DATABASE_URL.
+  const vercelTmp = process.env.VERCEL === "1"
+    ? path.join("/tmp", "donmuse-pglite")
+    : "";
+  const dir = fromUrl || process.env.DONMUSE_DATA_DIR || vercelTmp || path.join(process.cwd(), "data", "pglite");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
