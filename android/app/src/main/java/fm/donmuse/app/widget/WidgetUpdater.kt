@@ -31,7 +31,7 @@ object WidgetUpdater {
             val v = RemoteViews(ctx.packageName, layout)
             v.setTextViewText(R.id.w_title, title)
             v.setTextViewText(R.id.w_artist, artist)
-            v.setTextViewText(R.id.w_status, if (playing) "♪ قيد التشغيل" else "⏸ متوقف")
+            v.setTextViewText(R.id.w_status, if (playing) "قيد التشغيل" else "متوقف")
             v.setOnClickPendingIntent(R.id.w_play, action(ctx, NowPlayingWidget.ACTION_TOGGLE, 1))
             v.setOnClickPendingIntent(R.id.w_next, action(ctx, NowPlayingWidget.ACTION_NEXT, 2))
             v.setOnClickPendingIntent(R.id.w_prev, action(ctx, NowPlayingWidget.ACTION_PREV, 3))
