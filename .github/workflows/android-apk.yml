@@ -21,9 +21,9 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: android
+    # NB: no job-wide working-directory. It used to be `android`, which silently
+    # broke every repo-root-relative path used later (`/tmp` copies, artifact
+    # globs). Steps that need the Android project cd into it explicitly.
     steps:
       - uses: actions/checkout@v5
 
@@ -40,7 +40,6 @@ jobs:
       # Bundle the real web UI inside the APK so the app also opens with no
       # network (assets/www). The app falls back to the hosted build if absent.
       - name: Build web UI for bundling
-        working-directory: .
         env:
           NEXT_PUBLIC_API_BASE: ${{ vars.NEXT_PUBLIC_API_BASE }}
           NEXT_TELEMETRY_DISABLED: "1"
@@ -73,9 +72,11 @@ jobs:
           cache-read-only: false
 
       - name: Gradle version
+        working-directory: android
         run: gradle --version
 
       - name: Build debug APK
+        working-directory: android
         env:
           DONMUSE_WEB_HOST: ${{ vars.DONMUSE_WEB_HOST }}
         run: |
@@ -89,6 +90,7 @@ jobs:
           fi
 
       - name: Build release APK (signed when secrets exist, else debug-signed)
+        working-directory: android
         env:
           DONMUSE_KEYSTORE_B64: ${{ secrets.DONMUSE_KEYSTORE_B64 }}
           DONMUSE_STORE_PASSWORD: ${{ secrets.DONMUSE_STORE_PASSWORD }}
@@ -120,7 +122,11 @@ jobs:
           mkdir -p /tmp/apk-out
           for kind in debug release; do
             f=$(ls android/app/build/outputs/apk/$kind/*.apk 2>/dev/null | head -1 || true)
-            [ -n "$f" ] && cp "$f" "/tmp/apk-out/don-muse-$kind.apk"
+            if [ -z "$f" ]; then
+              echo "::error title=APK missing::no $kind APK was produced"
+              exit 1
+            fi
+            cp "$f" "/tmp/apk-out/don-muse-$kind.apk"
           done
           ls -l /tmp/apk-out
 
