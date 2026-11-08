@@ -196,6 +196,7 @@ const en = {
   providersTitle: "Content sources", providerStatus: "Status", providerLicense: "Licence", providerWhy: "Why this source",
   providersSelfHosted: "Self-hostable", providersBackoff: "retrying in", providersUnconfigured: "Needs configuration",
   playbackPolicy: "Playback policy", policyEmbed: "Official player only", policyDirect: "Direct stream", policyLink: "Opens the source",
+  hidden: "Hidden", results: "results",
 } as const;
 
 export type DictKey = keyof typeof en;
@@ -364,7 +365,7 @@ const ar: Dict = {
   providerStatus: "الحالة", providerLicense: "الترخيص", providerWhy: "سبب الاختيار",
   providersSelfHosted: "قابل للاستضافة الذاتية", providersBackoff: "إعادة المحاولة بعد", providersUnconfigured: "يحتاج إعدادًا",
   playbackPolicy: "سياسة التشغيل", policyEmbed: "المشغّل الرسمي فقط", policyDirect: "بث مباشر",
-  policyLink: "يفتح المصدر",
+  policyLink: "يفتح المصدر", hidden: "مخفي", results: "نتيجة",
 };
 
 const fr: DictPatch = {
