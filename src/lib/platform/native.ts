@@ -158,7 +158,8 @@ export async function requestMediaPermissionsAsync(
   const b = bridge();
   if (!b || typeof window === "undefined") return false;
   const required = kinds.filter((kind) => kind !== "notifications");
-  if (required.every((kind) => hasMediaPermission(kind))) return true;
+  const hasAccess = () => required.length === 0 || required.some((kind) => hasMediaPermission(kind));
+  if (hasAccess()) return true;
 
   return new Promise<boolean>((resolve) => {
     const registry = (window.donmuseNative ??= {});
@@ -172,10 +173,10 @@ export async function requestMediaPermissionsAsync(
       else delete registry.__donmusePermissions;
       resolve(granted);
     };
-    const timeout = window.setTimeout(() => finish(required.every((kind) => hasMediaPermission(kind))), 120_000);
+    const timeout = window.setTimeout(() => finish(hasAccess()), 120_000);
     registry.__donmusePermissions = () => {
       // NativeEvents calls this only after Android has closed the dialog.
-      finish(required.every((kind) => hasMediaPermission(kind)));
+      finish(hasAccess());
     };
     try {
       b.requestPermissions(kinds.join(","));
