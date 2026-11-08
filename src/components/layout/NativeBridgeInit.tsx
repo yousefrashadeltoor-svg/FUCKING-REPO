@@ -2,7 +2,8 @@
 
 // ============================================================================
 //  NativeBridgeInit — boots the Android host integration (no-op on the web).
-//  • requests media + notification permissions on first launch
+//  • boots Android-native playback and keeps native widgets in sync
+//  • media permissions are requested contextually from «موسيقاي»
 //  • pushes engine settings into the native player
 //  • keeps widgets / notification metadata in sync with the current track
 // ============================================================================
