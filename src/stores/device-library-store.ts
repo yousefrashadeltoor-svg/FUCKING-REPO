@@ -19,10 +19,10 @@ import {
   applyArtworkEdit,
   type EditResult,
 } from "@/lib/device-library";
-import { isNativeHost, hasMediaPermission, requestMediaPermissions, type MediaPerm } from "@/lib/platform/native";
+import { isNativeHost, hasMediaPermission, requestMediaPermissionsAsync, type MediaPerm } from "@/lib/platform/native";
 import type { TrackDTO } from "@/lib/types";
 import { usePlayerStore } from "@/stores/player-store";
-import { playListNow, startTrack } from "@/lib/audio/controller";
+import { playListNow } from "@/lib/audio/controller";
 
 const uid = () => `pl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -125,7 +125,9 @@ export const useDeviceLibrary = create<DeviceLibraryState>()((set, get) => ({
   },
 
   grant: async (kinds = ["audio", "video", "notifications"]) => {
-    const ok = requestMediaPermissions(kinds);
+    // Do not scan until Android has actually returned the user's permission
+    // decision; scanning immediately after launch used to return an empty list.
+    const ok = await requestMediaPermissionsAsync(kinds);
     if (ok) await get().scan();
     return ok;
   },
@@ -303,5 +305,4 @@ export const deviceTrackId = hashId;
 export function playDeviceTrack(track: TrackDTO): void {
   const store = usePlayerStore.getState();
   store.playTrack(track, { origin: "my-music" });
-  startTrack(track);
 }
