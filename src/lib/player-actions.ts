@@ -8,6 +8,8 @@
 //  current track, metadata) is mirrored by the controller.
 // ============================================================================
 import { getEngine } from "@/lib/audio/engine";
+import { externalFallback, policyFor } from "@/lib/playback-policy";
+import { toast } from "sonner";
 import { usePlayerStore, trackKey } from "@/stores/player-store";
 import { playListNow, startTrack, toggleNow, stopAllNow, prevNow, nextNow } from "@/lib/audio/controller";
 import type { TrackDTO } from "@/lib/types";
@@ -35,10 +37,24 @@ async function resolveMajor(track: TrackDTO): Promise<TrackDTO> {
     : track;
 }
 
+/** Reason a track could not be played, for an honest toast instead of silence. */
+function linkOut(track: TrackDTO): void {
+  const policy = policyFor(track.source);
+  const url = externalFallback(track.source, track.sourceId) ?? null;
+  if (url && typeof window !== "undefined") window.open(url, "_blank", "noopener");
+  toast(policy.note);
+}
+
 export function playTrackNow(
   track: TrackDTO,
   opts?: { queue?: TrackDTO[]; index?: number; origin?: string },
 ): void {
+  // Providers that only allow linking (Bandcamp and friends) must never look
+  // like a broken player: we open their official page instead.
+  if (policyFor(track.source).mode === "link-out") {
+    linkOut(track);
+    return;
+  }
   const engine = getEngine();
   engine.ensureContext(); // unlock WebAudio inside the gesture
 

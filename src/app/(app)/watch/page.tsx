@@ -210,6 +210,58 @@ function WatchInner() {
     };
   }, [videoId, meta?.title, meta?.channel, meta?.thumb, meta?.durationSec]);
 
+  /* ------------- real watch-history recording (YouTube only) ------------- */
+  const metaRef = useRef(meta);
+  metaRef.current = meta;
+  useEffect(() => {
+    if (!videoId) return;
+    const engine = getEngine();
+    const started = Date.now();
+    let lastSent = 0;
+    let position = 0;
+    const off = engine.on("timeupdate", (t) => {
+      position = typeof t === "number" ? t : 0;
+    });
+    // Save every 20 s of playback (and once on leave), with the real position.
+    const flush = (completed = false) => {
+      const info = metaRef.current;
+      if (!info) return;
+      const watched = Math.round((Date.now() - started) / 1000);
+      if (watched < 3 && !completed) return;
+      void fetch(`${apiBase}/api/youtube/history`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          videoId,
+          title: info.title,
+          channelId: info.channelId,
+          channelTitle: info.channel,
+          thumb: info.thumb,
+          durationSec: info.durationSec,
+          positionSec: Math.round(position),
+          watchedSec: watched,
+          completed,
+        }),
+      }).catch(() => {});
+      lastSent = Date.now();
+    };
+    const timer = setInterval(() => {
+      if (Date.now() - lastSent > 20_000) flush();
+    }, 10_000);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onHide);
+      off();
+      flush();
+    };
+    // The ref keeps the latest metadata without restarting the timer.
+  }, [videoId, apiBase]);
+
   /* ------------------------------ actions ------------------------------- */
   const act = async (body: Record<string, unknown>, key: string) => {
     setBusy(key);

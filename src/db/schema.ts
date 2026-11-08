@@ -285,6 +285,36 @@ export const oauthAccounts = pgTable(
   (t) => [uniqueIndex("oauth_user_provider_idx").on(t.userId, t.provider)],
 );
 
+/**
+ * YouTube watch history — deliberately SEPARATE from `listening_history`.
+ * The in-app history is what DON MUSE played (local/other providers); this table
+ * is only for official YouTube content, so the two lists never contaminate each
+ * other and the user can clear either one independently.
+ */
+export const youtubeHistory = pgTable(
+  "youtube_history",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: text("video_id").notNull(),
+    title: text("title").notNull(),
+    channelId: text("channel_id"),
+    channelTitle: text("channel_title"),
+    thumbUrl: text("thumb_url"),
+    durationSec: integer("duration_sec").notNull().default(0),
+    positionSec: integer("position_sec").notNull().default(0),
+    watchedSec: integer("watched_sec").notNull().default(0),
+    completed: boolean("completed").notNull().default(false),
+    watchedAt: timestamp("watched_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("yt_history_user_idx").on(t.userId, t.watchedAt),
+    index("yt_history_video_idx").on(t.userId, t.videoId),
+  ],
+);
+
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
@@ -311,3 +341,4 @@ export type ListeningHistoryRow = typeof listeningHistory.$inferSelect;
 export type ArtistFollowRow = typeof artistFollows.$inferSelect;
 export type AlbumLikeRow = typeof albumLikes.$inferSelect;
 export type OAuthAccountRow = typeof oauthAccounts.$inferSelect;
+export type YouTubeHistoryRow = typeof youtubeHistory.$inferSelect;

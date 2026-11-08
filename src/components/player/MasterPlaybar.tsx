@@ -38,6 +38,7 @@ import { nextNow, prevNow, stopAllNow, toggleNow, describeSource } from "@/lib/a
 import { ProgressSlider } from "./ProgressSlider";
 import { EqualizerPanel } from "./EqualizerPanel";
 import { DownloadMenu } from "./DownloadMenu";
+import { canDownload } from "@/lib/playback-policy";
 import { MoreMenu } from "./MoreMenu";
 import { BrandIcon } from "@/components/brand/BrandIcon";
 import { shareTrack } from "@/lib/share";
@@ -359,7 +360,9 @@ export function MasterPlaybar() {
                 setMoreOpen(false);
                 setEqOpen(false);
               }}
-              disabled={!track || isLive}
+              // YouTube content is not downloadable, so the control is disabled
+              // instead of opening a menu that can only refuse.
+              disabled={!track || isLive || !canDownload(track.source)}
               title={t("download")}
               aria-label={t("download")}
               className={cn(

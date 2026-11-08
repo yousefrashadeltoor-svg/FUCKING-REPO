@@ -12,6 +12,7 @@ import type { TrackDTO } from "@/lib/types";
 import { useT } from "@/lib/i18n";
 import { BrandIcon } from "@/components/brand/BrandIcon";
 import { shareTrack } from "@/lib/share";
+import { canDownload } from "@/lib/playback-policy";
 import { enqueueTrack } from "@/stores/download-store";
 
 interface Props {
@@ -157,18 +158,22 @@ export function TrackList({ tracks, playAll = true, showAlbum = true, onRemove, 
               >
                 <Share2 className="size-3.5" />
               </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  enqueueTrack(t, "mp3-320");
-                  toast(t2("addBatch"));
-                }}
-                className="rounded-full p-1 text-white/30 opacity-0 transition-colors hover:bg-white/10 hover:text-[#1DB954] group-hover:opacity-100"
-                aria-label={t2("addBatch")}
-                title={t2("addBatch")}
-              >
-                <Download className="size-3.5" />
-              </button>
+              {/* The download button only appears where downloading is allowed
+                  by the provider's policy (never for YouTube content). */}
+              {canDownload(t.source) && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    enqueueTrack(t, "mp3-320");
+                    toast(t2("addBatch"));
+                  }}
+                  className="rounded-full p-1 text-white/30 opacity-0 transition-colors hover:bg-white/10 hover:text-[#1DB954] group-hover:opacity-100"
+                  aria-label={t2("addBatch")}
+                  title={t2("addBatch")}
+                >
+                  <Download className="size-3.5" />
+                </button>
+              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
