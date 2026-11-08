@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 const ITEMS = [
   { href: "/", key: "home" as const, icon: Home },
@@ -49,7 +50,7 @@ export function MobileNav() {
         );
         const content = (
           <>
-            <Icon className={cn("size-[15px] shrink-0", active && "drop-shadow-[0_0_7px_var(--dynamic-glow)]")} />
+            {external ? <BrandIcon name="youtubevideo" className="size-[15px] shrink-0" color="#FF0000" /> : <Icon className={cn("size-[15px] shrink-0", active && "drop-shadow-[0_0_7px_var(--dynamic-glow)]")} />}
             <span className="max-w-full truncate">{label}</span>
           </>
         );
