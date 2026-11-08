@@ -46,7 +46,8 @@ export interface YtInfo {
   _client?: string;
 }
 
-const CLIENTS = ["android", "ios", "mweb", "tv", "web_safari", "default"];
+// No player-client spoofing: only the default client for the providers that
+// permit extraction (SoundCloud / Bandcamp / Dailymotion).
 const memCache = new Map<string, { at: number; info: YtInfo }>();
 const TTL_MS = 40 * 60 * 1000;
 
@@ -77,18 +78,33 @@ function usable(f: YtFormat): boolean {
 }
 
 /** Extract real info + formats for any yt-dlp-supported URL (YouTube, SoundCloud, …). */
-export async function extractInfo(url: string, opts: { youtube?: boolean } = {}): Promise<YtInfo> {
+const YT_HOSTS = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|music\.youtube\.com)$/i;
+
+/** True when the URL points at YouTube/YouTube Music content. */
+export function isYouTubeUrl(url: string): boolean {
+  try {
+    return YT_HOSTS.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+export async function extractInfo(url: string, _opts: { youtube?: boolean } = {}): Promise<YtInfo> {
+  // Defence in depth: YouTube content is official-embed only. Even if some path
+  // still asks, the extractor refuses instead of violating platform terms.
+  if (isYouTubeUrl(url)) {
+    throw new Error(
+      "YouTube content plays through the official YouTube player only; extraction is disabled.",
+    );
+  }
   const key = url;
   const cached = memCache.get(key);
   if (cached && Date.now() - cached.at < TTL_MS) return cached.info;
 
-  const clients = opts.youtube ? CLIENTS : ["default"];
+  const clients = ["default"];
   let lastErr = "";
   for (const client of clients) {
     const args = ["-J", "--no-warnings", "--no-playlist", "--socket-timeout", "20"];
-    if (opts.youtube && client !== "default") {
-      args.push("--extractor-args", `youtube:player_client=${client}`);
-    }
     args.push(url);
     const { stdout, stderr, code } = await runYtDlp(args);
     if (code !== 0 || !stdout.trim()) {

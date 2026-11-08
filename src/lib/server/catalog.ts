@@ -177,7 +177,9 @@ export async function bumpPlayCount(trackId: number) {
 
 
 /** Upsert real artists (with images) from YouTube Music search. */
-export async function upsertArtists(hits: { id: string; name: string; imageUrl: string | null; subscribers: string | null }[]) {
+export async function upsertArtists(
+  hits: { id: string; name: string; imageUrl: string | null; subscribers: string | number | null }[],
+) {
   const out: number[] = [];
   for (const h of hits) {
     const existing = await db.select({ id: artists.id, imageUrl: artists.imageUrl }).from(artists).where(ilike(artists.name, h.name)).limit(1);
@@ -199,8 +201,9 @@ export async function upsertArtists(hits: { id: string; name: string; imageUrl: 
   return db.select().from(artists).where(inArray(artists.id, out));
 }
 
-function parseSubs(s: string | null): number {
-  if (!s) return 0;
+function parseSubs(s: string | number | null): number {
+  if (s === null || s === undefined) return 0;
+  if (typeof s === "number") return Number.isFinite(s) ? Math.round(s) : 0;
   const m = s.replace(/,/g, "").match(/([\d.]+)\s*([KMB])?/i);
   if (!m) return 0;
   const n = Number(m[1]);

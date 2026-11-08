@@ -1,9 +1,18 @@
 import { cookies } from "next/headers";
-import { encodeTokens, exchangeCode, STATE_COOKIE, TOKEN_COOKIE } from "@/lib/server/google";
+import { exchangeCode, STATE_COOKIE, type TokenSet } from "@/lib/server/google";
+import { ensureSessionUser } from "@/lib/server/session";
+import { canPersistTokens, saveAccount } from "@/lib/server/oauth-store";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/youtube/callback — Google redirects here with ?code & ?state.
+interface UserInfo {
+  sub?: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+}
+
+/** GET /api/youtube/callback — Google redirects here with ?code & ?state. */
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const origin = url.origin;
@@ -19,16 +28,35 @@ export async function GET(req: Request) {
     return Response.redirect(`${origin}/youtube-profile?status=invalid-state`, 302);
   }
 
-  const tokens = await exchangeCode(origin, code);
+  const tokens = (await exchangeCode(origin, code)) as TokenSet | null;
   if (!tokens) return Response.redirect(`${origin}/youtube-profile?status=failed`, 302);
 
+  // Encrypted at rest; refuses to store anything if GOOGLE_TOKEN_KEY is absent.
+  if (!canPersistTokens()) {
+    return Response.redirect(`${origin}/youtube-profile?status=no-token-key`, 302);
+  }
+
+  // Real identity for the local account (also creates the session cookie).
+  const user = await ensureSessionUser();
+  if (user.id < 0) return Response.redirect(`${origin}/youtube-profile?status=no-session`, 302);
+
+  let profile: UserInfo = {};
+  try {
+    const res = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+      cache: "no-store",
+    });
+    if (res.ok) profile = (await res.json()) as UserInfo;
+  } catch {
+    profile = {}; // identity is a nicety; the tokens are what matter
+  }
+
+  try {
+    await saveAccount(user.id, profile, tokens);
+  } catch {
+    return Response.redirect(`${origin}/youtube-profile?status=storage-failed`, 302);
+  }
+
   jar.delete(STATE_COOKIE);
-  jar.set(TOKEN_COOKIE, encodeTokens(tokens), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: origin.startsWith("https"),
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
   return Response.redirect(`${origin}/youtube-profile?status=connected`, 302);
 }

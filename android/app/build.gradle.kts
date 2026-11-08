@@ -7,20 +7,48 @@ android {
     namespace = "fm.donmuse.app"
     compileSdk = 35
 
-    val webHost: String = (project.findProperty("webHost") as String?)
+    val configuredWebHost: String? = (project.findProperty("webHost") as String?)
         ?: System.getenv("DONMUSE_WEB_HOST")
-        ?: "donmuse.pages.dev"
+    val webHost: String = (configuredWebHost ?: "")
+        .trim()
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .trimEnd('/')
+        .ifBlank { "donmuse.pages.dev" }
 
     defaultConfig {
         applicationId = "fm.donmuse.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.0.0"
+        // Bumped for every published build: Android refuses to *update* an
+        // installed app whose versionCode is not higher, and mixed signatures
+        // for the same version look like a tampered package.
+        versionCode = 21
+        versionName = "2.1.0"
         vectorDrawables { useSupportLibrary = true }
         // Where the UI is served from (override: -PwebHost=… / DONMUSE_WEB_HOST).
         buildConfigField("String", "WEB_HOST", "\"$webHost\"")
 
+    }
+
+    // AAPT's default ignore list contains "<dir>_*", which removes Next.js'
+    // required "_next" directory from the APK. Keep the normal junk-file rules
+    // but remove only that directory rule so every JS/CSS chunk is packaged.
+    androidResources {
+        ignoreAssetsPatterns.clear()
+        ignoreAssetsPatterns.addAll(
+            listOf(
+                "!.svn",
+                "!.git",
+                "!.ds_store",
+                "!*.scc",
+                ".*",
+                "!CVS",
+                "!thumbs.db",
+                "!picasa.ini",
+                "!*~",
+            )
+        )
     }
 
     buildFeatures {
@@ -30,7 +58,11 @@ android {
 
     signingConfigs {
         create("release") {
-            // Provide via CI secrets, or the release APK falls back to debug keys.
+            // The build must be upgradeable: every published APK has to carry the
+            // SAME signing key, otherwise Android refuses the update ("app not
+            // installed") and the user has to uninstall first. CI therefore
+            // generates one stable keystore (DONMUSE_KEYSTORE_B64) or reuses the
+            // debug keys; this block only picks a keystore that exists.
             val store = System.getenv("DONMUSE_KEYSTORE") ?: "donmuse-release.jks"
             val f = file(store)
             if (!f.exists()) {

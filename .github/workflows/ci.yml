@@ -10,16 +10,19 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --ignore-scripts || npm install --ignore-scripts
-      - name: Typecheck
+      - run: npm ci --ignore-scripts
+      - name: Typecheck (no errors allowed)
         run: npx tsc --noEmit
-      - name: Lint
-        run: npm run lint -- --max-warnings=200 || true
+      # Warnings are tolerated for now, errors never are (the old `|| true` hid both).
+      - name: Lint (errors fail the build)
+        run: npm run lint -- --max-warnings=200
+      - name: Tests
+        run: npm test
       - name: Build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

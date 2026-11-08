@@ -2,7 +2,8 @@ node_modules/
 .next/
 out/
 dist/
-data/
+# local PGlite database at the repo root only — NOT android/.../app/data/
+/data/
 .env*.local
 tsconfig.tsbuildinfo
 *.zip
@@ -17,3 +18,6 @@ android/app/*.jks
 
 # bundled web UI inside the APK (generated at build time)
 android/app/src/main/assets/www/
+
+# offline UI bundle for the APK
+out-offline/

@@ -11,7 +11,10 @@ export function OfflineInit() {
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
+    // The APK ships a complete static bundle (window.__DM_OFFLINE__), so there is
+    // nothing to cache and no origin to scope a worker to.
+    const bundled = typeof window !== "undefined" && (window as { __DM_OFFLINE__?: boolean }).__DM_OFFLINE__;
+    if (!bundled && "serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
     }
     const on = () => setOffline(false);

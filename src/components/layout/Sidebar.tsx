@@ -29,7 +29,9 @@ import {
   HardDrive,
   UserCheck,
   Activity,
+  BarChart3,
   MoreHorizontal,
+  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -38,12 +40,15 @@ import type { PlaylistDTO } from "@/lib/types";
 import { useT, type DictKey } from "@/lib/i18n";
 import { isNativeHost } from "@/lib/platform/native";
 import { motion } from "framer-motion";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 interface NavItem {
   href: string;
   key: DictKey;
   icon: typeof Home;
   tone: string;
+  external?: boolean;
+  label?: string;
 }
 
 const PRIMARY: NavItem[] = [
@@ -57,7 +62,9 @@ const PRIMARY: NavItem[] = [
   { href: "/quran", key: "quran", icon: BookOpen, tone: "text-[#d4af37]" },
   { href: "/reels", key: "reels", icon: Clapperboard, tone: "text-pink-300" },
   { href: "/downloads", key: "downloads", icon: Inbox, tone: "text-lime-300" },
+  { href: "/stats", key: "statsTitle", icon: BarChart3, tone: "text-teal-300" },
   { href: "/ai", key: "ai", icon: Sparkles, tone: "text-fuchsia-300" },
+  { href: "https://www.youtube.com", key: "ytProfile", label: "YouTube", icon: Video, tone: "text-red-400", external: true },
 ];
 
 const SECONDARY: NavItem[] = [
@@ -103,13 +110,15 @@ export function Sidebar() {
   };
 
   const Item = ({ item }: { item: NavItem }) => {
-    const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+    const active = !item.external && (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href));
     const Icon = item.icon;
     return (
       <Link
         href={item.href}
-        title={t(item.key)}
-        aria-label={t(item.key)}
+        title={item.label ?? t(item.key)}
+        aria-label={item.label ?? t(item.key)}
+        target={item.external ? "_blank" : undefined}
+        rel={item.external ? "noopener noreferrer" : undefined}
         className={cn(
           "group relative flex items-center rounded-xl text-[13px] font-semibold transition-colors duration-200",
           collapsed ? "h-11 w-11 justify-center" : "gap-3 px-3 py-2",
@@ -133,11 +142,11 @@ export function Sidebar() {
             active ? "opacity-100" : "group-hover:opacity-60",
           )}
         />
-        <Icon className={cn("size-[19px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? item.tone : "opacity-80 group-hover:opacity-100")} />
-        {!collapsed && <span className="truncate">{t(item.key)}</span>}
+        {item.external ? <BrandIcon name="youtubevideo" className="size-[19px] shrink-0" color="#FF0000" /> : <Icon className={cn("size-[19px] shrink-0 transition-transform duration-200 group-hover:scale-110", active ? item.tone : "opacity-80 group-hover:opacity-100")} />}
+        {!collapsed && <span className="truncate">{item.label ?? t(item.key)}</span>}
         {collapsed && (
           <span className="pointer-events-none absolute start-full z-50 ms-2 whitespace-nowrap rounded-lg border border-white/10 bg-black/90 px-2.5 py-1 text-[11.5px] font-medium text-white opacity-0 shadow-xl backdrop-blur transition-opacity group-hover:opacity-100">
-            {t(item.key)}
+            {item.label ?? t(item.key)}
           </span>
         )}
       </Link>
@@ -147,8 +156,8 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "glass-panel z-20 hidden shrink-0 flex-col gap-1 rounded-2xl md:flex",
-        collapsed ? "w-[64px] items-center p-2" : "w-[212px] p-3",
+        "glass-panel z-20 hidden shrink-0 flex-col gap-1 rounded-2xl lg:flex",
+        collapsed ? "w-[64px] items-center p-2" : "w-[212px] p-3 max-[900px]:w-[168px]",
       )}
     >
       <Link href="/" className={cn("mb-1 flex items-center gap-2.5", collapsed ? "justify-center" : "px-1 py-1.5")}>

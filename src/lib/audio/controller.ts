@@ -77,10 +77,8 @@ export function seekNow(sec: number): void {
 }
 
 export function nextNow(): void {
-  const s = usePlayerStore.getState();
-  s.next();
-  const t = usePlayerStore.getState().currentTrack;
-  if (t) startTrack(t);
+  // The store subscriber performs the single engine transition.
+  usePlayerStore.getState().next();
 }
 
 export function prevNow(): void {
@@ -91,8 +89,6 @@ export function prevNow(): void {
     seekNow(0);
     return;
   }
-  const t = usePlayerStore.getState().currentTrack;
-  if (t) startTrack(t);
 }
 
 /** Full stop used by the playbar X button (music · Quran · radio · TV audio). */
@@ -122,10 +118,9 @@ export function playListNow(
   const list = tracks.filter(Boolean);
   if (list.length === 0) return;
   const i = Math.max(0, Math.min(index, list.length - 1));
-  const track = list[i];
   const store = usePlayerStore.getState();
+  // The synchronous store subscription starts the engine once, in this tap. 
   store.playQueue(list, i, origin);
-  startTrack(track);
   if (useSettingsStore.getState().hapticsOnTap) {
     void import("@/lib/platform/native").then((m) => m.vibrate(8));
   }
@@ -166,7 +161,7 @@ export function installPlaybackController(): () => void {
     const track = t as TrackDTO | undefined;
     if (track) {
       updateMediaSession("playing");
-      scrobble(track);
+      scrobble(track, true); // new track → reset the listener clock
     }
   });
   const offEnded = engine.on("ended", () => {
@@ -186,20 +181,17 @@ export function installPlaybackController(): () => void {
     if (s.shuffle && s.queue.length > 1) {
       const idx = Math.floor(Math.random() * s.queue.length);
       const t = s.queue[idx];
-      store.setState({ index: idx, currentTrack: t, isPlaying: true, positionSec: 0 });
-      if (t) startTrack(t);
+      store.setState({ index: idx, currentTrack: t, isPlaying: true, positionSec: 0, durationSec: 0 });
       return;
     }
     if (nextIndex < s.queue.length) {
       const t = s.queue[nextIndex];
-      store.setState({ index: nextIndex, currentTrack: t, isPlaying: true, positionSec: 0 });
-      if (t) startTrack(t);
+      store.setState({ index: nextIndex, currentTrack: t, isPlaying: true, positionSec: 0, durationSec: 0 });
       return;
     }
     if (s.repeat === "all" && s.queue.length > 0) {
       const t = s.queue[0];
-      store.setState({ index: 0, currentTrack: t, isPlaying: true, positionSec: 0 });
-      if (t) startTrack(t);
+      store.setState({ index: 0, currentTrack: t, isPlaying: true, positionSec: 0, durationSec: 0 });
       return;
     }
     store.setState({ isPlaying: false, positionSec: 0 });
@@ -211,7 +203,8 @@ export function installPlaybackController(): () => void {
 
   const unsub = store.subscribe((s) => {
     const key = trackKey(s.currentTrack);
-    if (key !== lastKey) {
+    const changedTrack = key !== lastKey;
+    if (changedTrack) {
       lastKey = key;
       if (!s.currentTrack) {
         engine.stop();
@@ -222,12 +215,14 @@ export function installPlaybackController(): () => void {
           startAt: sameSource ? s.positionSec : 0,
         });
       }
-    }
-    if (s.isPlaying !== lastPlaying) {
-      lastPlaying = s.isPlaying;
+    } else if (s.isPlaying !== lastPlaying) {
+      // A new track is already loaded with its autoplay intent above. Calling
+      // play/pause again here raced async native stream resolution and could
+      // revive the previous player.
       if (s.isPlaying) void engine.play();
       else engine.pause();
     }
+    lastPlaying = s.isPlaying;
   });
 
   const unsubPrefs = store.subscribe((s) => {
@@ -235,6 +230,9 @@ export function installPlaybackController(): () => void {
     engine.setMuted(s.muted);
     engine.setPlaybackRate(s.playbackRate);
     engine.setEq(s.eqBands);
+    engine.setBassBoost(s.bassBoost);
+    engine.setPreamp(s.preamp);
+    engine.setBalance(s.balance);
   });
 
   const unsubSettings = useSettingsStore.subscribe(() => {
@@ -289,11 +287,32 @@ export function installPlaybackController(): () => void {
   let offNative: (() => void) | null = null;
   if (isNativeHost()) {
     offNative = nativePlayback.onState((st) => {
+      // Ignore a delayed native callback after the engine has switched to the
+      // official YouTube iframe or the browser audio backend.
+      if (engine.backend !== "native") return;
       const cur = store.getState();
-      if (!cur.currentTrack) return;
-      if (st.durationMs > 0) store.setState({ durationSec: st.durationMs / 1000 });
-      if (st.positionMs > 0) store.setState({ positionSec: st.positionMs / 1000 });
-      if (typeof st.playing === "boolean" && st.playing !== cur.isPlaying) {
+      if (!cur.currentTrack || !st.itemId) return; // ignore delayed "stopped" callbacks
+      const nativeIndex = cur.queue.findIndex(
+        (t) => `${t.source}:${t.sourceId ?? ""}:${t.id}` === st.itemId,
+      );
+      if (nativeIndex < 0) return; // stale event from a previous queue
+      const nextTrack = cur.queue[nativeIndex];
+      if (!nextTrack) return;
+      if (nativeIndex !== cur.index) {
+        engine.adoptNativeTrack(nextTrack);
+        store.setState({
+          index: nativeIndex,
+          currentTrack: nextTrack,
+          positionSec: Math.max(0, st.positionMs / 1000),
+          durationSec: Math.max(0, st.durationMs / 1000),
+        });
+      } else {
+        store.setState({
+          ...(st.durationMs > 0 ? { durationSec: st.durationMs / 1000 } : {}),
+          positionSec: Math.max(0, st.positionMs / 1000),
+        });
+      }
+      if (typeof st.playing === "boolean" && st.playing !== store.getState().isPlaying) {
         store.setState({ isPlaying: st.playing });
       }
     });
@@ -395,16 +414,33 @@ export function installMediaSessionHandlers(): () => void {
 
 const scrobbled = new Set<string>();
 
-function scrobble(track: TrackDTO) {
+/**
+ * Playback history, recorded with REAL listened time.
+ *
+ * The previous build had a second, duplicate scrobbler in Providers that posted
+ * every 60 s forever (even while paused), and this one always reported 0 s — so
+ * "minutes listened" statistics were fiction. Now there is exactly one writer and
+ * it reports the seconds actually played since the last report.
+ */
+let lastReportAt = 0;
+
+function scrobble(track: TrackDTO, reset = false) {
   if (!track || track.id <= 0) return;
   if (track.source === "radio" || track.source === "quran" || track.source === "local") return;
-  const key = `${track.id}:${Math.floor(Date.now() / 60_000)}`;
+  if (reset) lastReportAt = Date.now();
+  const now = Date.now();
+  if (lastReportAt === 0) lastReportAt = now;
+  const elapsed = Math.round((now - lastReportAt) / 1000);
+  if (elapsed < 5) return;
+  const seconds = Math.min(elapsed, 3600);
+  lastReportAt = now;
+  const key = `${track.id}:${Math.floor(now / 60_000)}`;
   if (scrobbled.has(key)) return;
   scrobbled.add(key);
   void fetch("/api/history", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trackId: track.id, durationListenedSec: 0 }),
+    body: JSON.stringify({ trackId: track.id, durationListenedSec: seconds }),
   }).catch(() => {});
 }
 

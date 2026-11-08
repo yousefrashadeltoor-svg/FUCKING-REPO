@@ -174,6 +174,29 @@ const en = {
   // --- new: health ---
   healthTitle: "System health", healthDb: "Database", healthSources: "Content sources",
   healthCheck: "Check now", healthy: "Healthy", degraded: "Degraded", down: "Down",
+  // --- YouTube watch page & interactions ---
+  watch: "Watch", views: "views", subscribe: "Subscribe", subscribed: "Subscribed", unsubscribed: "Unsubscribed",
+  subscribeFailed: "Could not update the subscription", dislike: "Dislike", liked: "Liked", disliked: "Disliked",
+  ratingCleared: "Rating removed", comments: "Comments", commentPosted: "Comment posted", postComment: "Post comment",
+  writeComment: "Write a comment as your YouTube account…", noComments: "No comments yet.",
+  replies: "replies", description: "Description", saveToPlaylist: "Save to a YouTube playlist",
+  addedToYouTubePlaylist: "Added to your YouTube playlist", noYouTubePlaylists: "Your account has no playlists yet",
+  connectYouTubeFirst: "Connect your YouTube account to use this",
+  connectYouTubeHint: "Likes, subscriptions, comments and playlists are written to your real Google account.",
+  officialPlayerNote: "Played by the official YouTube player. Background audio and downloads are not available for YouTube content.",
+  noVideoSelected: "No video selected", openOnYouTube: "Open on YouTube", loadMore: "Load more",
+  liveNow: "LIVE", upcoming: "Upcoming", video: "Video", channels: "Channels", filters: "Filters",
+  anyDuration: "Any length", durShort: "Under 4 min", durMedium: "4–20 min", durLong: "Over 20 min",
+  sortRelevance: "Relevance", sortDate: "Newest", sortViews: "Most viewed", sortRating: "Top rated",
+  hdOnly: "HD only", licensedOnly: "Creative Commons", withCaptions: "With captions",
+  uploadVideo: "Upload to YouTube", uploadTitle: "Title", uploadPrivacy: "Visibility", uploadPublic: "Public",
+  uploadUnlisted: "Unlisted", uploadPrivate: "Private", uploadStart: "Upload", uploadProgress: "Uploading",
+  uploadDone: "Uploaded to YouTube", uploadNote: "Uploads go through the official Data API; YouTube Studio remains the source of truth.",
+  tokenKeyMissing: "GOOGLE_TOKEN_KEY is not set — the server refuses to store account tokens without encryption.",
+  providersTitle: "Content sources", providerStatus: "Status", providerLicense: "Licence", providerWhy: "Why this source",
+  providersSelfHosted: "Self-hostable", providersBackoff: "retrying in", providersUnconfigured: "Needs configuration",
+  playbackPolicy: "Playback policy", policyEmbed: "Official player only", policyDirect: "Direct stream", policyLink: "Opens the source",
+  hidden: "Hidden", results: "results", bassBoost: "Bass boost", preamp: "Pre-amp", balance: "Balance", center: "Centre", left: "Left", right: "Right", statsTitle: "Listening statistics", statsSub: "Computed from your own plays on this account — nothing estimated.", statsEmpty: "No plays recorded yet. Play something and this page fills in.", uniqueTracks: "Unique tracks", uniqueArtists: "Artists", last30Days: "Last 30 days", byHour: "By hour", streak: "Listening streak", days: "days", genreDistribution: "Genres", ytWatchHistory: "YouTube watch history", ytWatchHistoryEmpty: "Nothing watched yet — play a YouTube video and it appears here.", ytHistoryCleared: "YouTube history cleared", clearHistory: "Clear", watched: "watched", ytStorageFailed: "Could not store the account securely — check GOOGLE_TOKEN_KEY.", ytSessionFailed: "Session could not be created — reload and try again.",
 } as const;
 
 export type DictKey = keyof typeof en;
@@ -320,6 +343,29 @@ const ar: Dict = {
   healthCheck: "افحص الآن", healthy: "سليم", degraded: "متذبذب", down: "متوقف",
   offlineBanner: "لا يوجد اتصال بالإنترنت · مكتبة الجهاز تعمل", tryAgain: "حاول مرة أخرى",
 
+  // --- إضافات: مشاهدة يوتيوب والتفاعل ---
+  watch: "مشاهدة", views: "مشاهدة", subscribe: "اشتراك",
+  subscribed: "مشترك", unsubscribed: "تم إلغاء الاشتراك", subscribeFailed: "تعذّر تحديث الاشتراك",
+  dislike: "عدم إعجاب", liked: "تم الإعجاب", disliked: "تم عدم الإعجاب",
+  ratingCleared: "تم إزالة التقييم", comments: "التعليقات", commentPosted: "تم نشر التعليق",
+  postComment: "نشر التعليق", writeComment: "اكتب تعليقًا بحساب يوتيوب الخاص بك…", noComments: "لا توجد تعليقات بعد.",
+  replies: "ردود", description: "الوصف", saveToPlaylist: "أضف إلى قائمة يوتيوب",
+  addedToYouTubePlaylist: "أُضيفت إلى قائمة يوتيوب الخاصة بك", noYouTubePlaylists: "لا توجد قوائم في حسابك بعد", connectYouTubeFirst: "اربط حساب يوتيوب أولًا لاستخدام هذه الميزة",
+  connectYouTubeHint: "الإعجابات والاشتراكات والتعليقات والقوائم تُكتب في حسابك الحقيقي على Google.", officialPlayerNote: "التشغيل عبر مشغّل يوتيوب الرسمي. التشغيل في الخلفية والتحميل غير متاحين لمحتوى يوتيوب.", noVideoSelected: "لم يتم اختيار فيديو",
+  openOnYouTube: "افتح على يوتيوب", loadMore: "عرض المزيد", liveNow: "مباشر",
+  upcoming: "قادم", video: "فيديو", channels: "القنوات",
+  filters: "الفلاتر", anyDuration: "أي مدة", durShort: "أقل من 4 دقائق",
+  durMedium: "4–20 دقيقة", durLong: "أكثر من 20 دقيقة", sortRelevance: "الأكثر صلة",
+  sortDate: "الأحدث", sortViews: "الأكثر مشاهدة", sortRating: "الأعلى تقييمًا",
+  hdOnly: "HD فقط", licensedOnly: "مشاع إبداعي", withCaptions: "مع ترجمة",
+  uploadVideo: "رفع إلى يوتيوب", uploadTitle: "العنوان", uploadPrivacy: "الظهور",
+  uploadPublic: "عام", uploadUnlisted: "غير مُدرج", uploadPrivate: "خاص",
+  uploadStart: "رفع", uploadProgress: "جارٍ الرفع", uploadDone: "تم الرفع إلى يوتيوب",
+  uploadNote: "الرفع يتم عبر واجهة Data API الرسمية، ويبقى YouTube Studio هو المرجع.", tokenKeyMissing: "‏GOOGLE_TOKEN_KEY غير مضبوط — الخادم يرفض تخزين رموز الحساب بدون تشفير.", providersTitle: "مصادر المحتوى",
+  providerStatus: "الحالة", providerLicense: "الترخيص", providerWhy: "سبب الاختيار",
+  providersSelfHosted: "قابل للاستضافة الذاتية", providersBackoff: "إعادة المحاولة بعد", providersUnconfigured: "يحتاج إعدادًا",
+  playbackPolicy: "سياسة التشغيل", policyEmbed: "المشغّل الرسمي فقط", policyDirect: "بث مباشر",
+  policyLink: "يفتح المصدر", hidden: "مخفي", results: "نتيجة", bassBoost: "تعزيز الباس", preamp: "مضخم مسبق", balance: "التوازن", center: "وسط", left: "يسار", right: "يمين", statsTitle: "إحصاءات الاستماع", statsSub: "محسوبة من تشغيلاتك على هذا الحساب — بلا تقديرات.", statsEmpty: "لا توجد تشغيلات بعد. شغّل أغنية وستمتلئ الصفحة.", uniqueTracks: "أغانٍ مختلفة", uniqueArtists: "فنانون", last30Days: "آخر 30 يومًا", byHour: "حسب الساعة", streak: "سلسلة الاستماع", days: "أيام", genreDistribution: "الأنواع", ytWatchHistory: "سجل مشاهدة يوتيوب", ytWatchHistoryEmpty: "لا شيء بعد — شغّل فيديو من يوتيوب وسيظهر هنا.", ytHistoryCleared: "تم مسح سجل يوتيوب", clearHistory: "مسح", watched: "تمت المشاهدة", ytStorageFailed: "تعذّر تخزين الحساب بأمان — تحقق من GOOGLE_TOKEN_KEY.", ytSessionFailed: "تعذّر إنشاء الجلسة — أعد التحميل وحاول مجددًا.",
 };
 
 const fr: DictPatch = {

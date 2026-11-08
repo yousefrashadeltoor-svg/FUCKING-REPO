@@ -2,7 +2,8 @@
 
 // ============================================================================
 //  NativeBridgeInit — boots the Android host integration (no-op on the web).
-//  • requests media + notification permissions on first launch
+//  • boots Android-native playback and keeps native widgets in sync
+//  • media permissions are requested contextually from «موسيقاي»
 //  • pushes engine settings into the native player
 //  • keeps widgets / notification metadata in sync with the current track
 // ============================================================================
@@ -11,7 +12,6 @@ import {
   isNativeHost,
   nativePlayback,
   refreshWidgets,
-  requestMediaPermissions,
 } from "@/lib/platform/native";
 import { usePlayerStore } from "@/stores/player-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -22,9 +22,6 @@ export function NativeBridgeInit() {
   useEffect(() => {
     if (!isNativeHost() || booted) return;
     booted = true;
-
-    // Permission prompts (Android 13+ media + notifications).
-    requestMediaPermissions(["audio", "video", "notifications"]);
 
     const s = usePlayerStore.getState();
     nativePlayback.setVolume(s.muted ? 0 : s.volume);

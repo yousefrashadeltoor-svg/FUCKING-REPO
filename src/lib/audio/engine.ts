@@ -27,6 +27,7 @@ import type { TrackDTO } from "@/lib/types";
 import { YouTubeBridge } from "./youtube-bridge";
 import { nativePlayback } from "@/lib/platform/native";
 import { apiUrl } from "@/lib/api-base";
+import { policyFor } from "@/lib/playback-policy";
 import { usePlayerStore } from "@/stores/player-store";
 
 /**
@@ -75,6 +76,15 @@ export class UniversalPlaybackEngine {
   private els: HTMLAudioElement[] = [];
   private elGains: GainNode[] = [];
   private eqChains: BiquadFilterNode[][] = [];
+  /** shared low-shelf bass boost (all elements) */
+  private bassNode: BiquadFilterNode | null = null;
+  /** master pre-amp gain, applied before the EQ so boosts cannot clip */
+  private preampNode: GainNode | null = null;
+  /** L/R balance splitter */
+  private panner: StereoPannerNode | null = null;
+  private bassBoost = 0;
+  private preampDb = 0;
+  private balance = 0;
   private active = 0;
 
   /* -------------------------------- state --------------------------------- */
@@ -121,7 +131,19 @@ export class UniversalPlaybackEngine {
       this.analyser = this.ctx.createAnalyser();
       this.analyser.fftSize = 2048;
       this.analyser.smoothingTimeConstant = 0.82;
-      this.master.connect(comp);
+      // Bass boost → pre-amp → stereo balance → (compressor) → analyser
+      this.bassNode = this.ctx.createBiquadFilter();
+      this.bassNode.type = "lowshelf";
+      this.bassNode.frequency.value = 120;
+      this.bassNode.gain.value = this.bassBoost;
+      this.preampNode = this.ctx.createGain();
+      this.preampNode.gain.value = this.dbToLinear(this.preampDb);
+      this.panner = this.ctx.createStereoPanner();
+      this.panner.pan.value = this.balance;
+      this.master.connect(this.bassNode);
+      this.bassNode.connect(this.preampNode);
+      this.preampNode.connect(this.panner);
+      this.panner.connect(comp);
       comp.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
 
@@ -285,6 +307,34 @@ export class UniversalPlaybackEngine {
     this.applyVolume();
   }
 
+  private dbToLinear(db: number): number {
+    return Math.pow(10, db / 20);
+  }
+
+  /** Extra <120 Hz shelf on top of the graphic EQ. */
+  setBassBoost(db: number) {
+    this.bassBoost = clamp(db, -12, 12);
+    if (this.bassNode && this.ctx) {
+      this.bassNode.gain.setTargetAtTime(this.bassBoost, this.ctx.currentTime, 0.02);
+    }
+  }
+
+  /** Master pre-amp; lowering it is how the user avoids clipping with a hot EQ. */
+  setPreamp(db: number) {
+    this.preampDb = clamp(db, -12, 12);
+    if (this.preampNode && this.ctx) {
+      this.preampNode.gain.setTargetAtTime(this.dbToLinear(this.preampDb), this.ctx.currentTime, 0.02);
+    }
+  }
+
+  /** Stereo balance: -1 hard left, 0 centre, +1 hard right. */
+  setBalance(v: number) {
+    this.balance = clamp(v, -1, 1);
+    if (this.panner && this.ctx) {
+      this.panner.pan.setTargetAtTime(this.balance, this.ctx.currentTime, 0.02);
+    }
+  }
+
   setEq(bands: number[]) {
     for (const chain of this.eqChains) {
       chain.forEach((bq, i) => {
@@ -307,21 +357,24 @@ export class UniversalPlaybackEngine {
    * even when the WebView is not running.
    */
   private nativeQueueFrom(track: TrackDTO, overrideUri?: string): { id: string; uri: string; title: string; artist: string; album: string; artUri: string | null }[] {
-    const toItem = (t: TrackDTO, uri?: string) => ({
-      id: String(t.id),
-      uri: uri ?? t.streamUrl,
-      title: t.title,
-      artist: t.artistName,
-      album: t.albumTitle ?? "",
-      artUri: t.coverUrl && /^https?:/.test(t.coverUrl) ? t.coverUrl : null,
-    });
+    const toItem = (t: TrackDTO, uri?: string) => {
+      const raw = uri ?? t.streamUrl;
+      return {
+        id: `${t.source}:${t.sourceId ?? ""}:${t.id}`,
+        uri: apiUrl(raw),
+        title: t.title,
+        artist: t.artistName,
+        album: t.albumTitle ?? "",
+        artUri: t.coverUrl && /^https?:/.test(t.coverUrl) ? t.coverUrl : null,
+      };
+    };
     const out = [toItem(track, overrideUri)];
     try {
       const state = peekPlayerState();
       const rest = (state?.queue ?? []).slice((state?.index ?? -1) + 1, (state?.index ?? -1) + 26);
       for (const t of rest) {
-        if (!t || t.id === track.id) continue;
-        if (!/^(https?|content|file):/.test(t.streamUrl)) continue;
+        if (!t || this.sourceKey(t) === this.sourceKey(track)) continue;
+        if (!/^(https?|content|file):|^\/api\//.test(t.streamUrl)) continue;
         out.push(toItem(t));
       }
     } catch {
@@ -371,18 +424,36 @@ export class UniversalPlaybackEngine {
     this.lastEmittedPos = -1;
     this.emit("trackchange", track);
 
-    const useYouTube = track.source === "youtube" && track.codec === "iframe" && !!track.sourceId;
+    // ---- source policy decides the backend (single source of truth) --------
+    // YouTube / YouTube Music *must* use the official IFrame player: never a
+    // proxy, never an extracted URL, never background audio.
+    const policy = policyFor(track.source);
+    const useYouTube =
+      policy.mode === "official-embed" && !!track.sourceId && track.source === "youtube";
+    if (policy.mode === "link-out") {
+      // Nothing can be played in-app for this provider — stop cleanly and let
+      // the UI offer the external link instead of pretending to play.
+      this.stop();
+      this.emit("error", `${policy.note}`);
+      return;
+    }
     const useNative = !useYouTube && nativePlayback.canHandle(track);
 
     if (useNative) {
       // The WebView must never also play audio while ExoPlayer owns the session.
       this.kind = "native";
+      // Stop the previous backend before resolving a new item.
+      if (this.yt) this.yt.pause();
+      nativePlayback.stop();
       this.hardStopElements();
       this.stopTick();
       // Catalog tracks are served by our own API: resolve a direct media URL so
       // ExoPlayer (not the WebView) streams it — that is what keeps audio alive
       // in the background, on the lock screen and in the widgets.
-      const needsResolve = track.id > 0 && !/^(content|file):\/\//.test(track.streamUrl);
+      const needsResolve =
+        track.id > 0 &&
+        !["quran", "radio", "local", "internal"].includes(track.source) &&
+        /^\/api\/tracks\/\d+\/stream(?:[?#]|$)/.test(track.streamUrl);
       if (needsResolve) {
         void nativePlayback.resolve(track.id).then((res) => {
           if (token !== this.loadToken) return; // a newer load took over
@@ -412,6 +483,8 @@ export class UniversalPlaybackEngine {
     }
 
     if (useYouTube) {
+      // The official YouTube player must be the only active audio backend.
+      nativePlayback.stop();
       this.kind = "youtube";
       this.hardStopElements();
       const yt = this.getYT();
@@ -630,6 +703,16 @@ export class UniversalPlaybackEngine {
   /** Back-compat alias. */
   get playing(): boolean {
     return this.isPlaying;
+  }
+
+  /** Mirror a change initiated by Android's media notification or widget. */
+  adoptNativeTrack(track: TrackDTO): void {
+    if (this.kind !== "native") return;
+    this.current = track;
+    this.loadedKey = this.sourceKey(track);
+    this.lastDuration = track.durationSec > 0 ? track.durationSec : this.lastDuration;
+    this.lastEmittedPos = -1;
+    this.emit("trackchange", track);
   }
 
   get currentTrack(): TrackDTO | null {

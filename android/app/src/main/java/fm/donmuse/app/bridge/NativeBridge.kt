@@ -2,6 +2,7 @@ package fm.donmuse.app.bridge
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.RingtoneManager
@@ -18,7 +19,9 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.ContextCompat
 import fm.donmuse.app.BuildConfig
+import fm.donmuse.app.DonMuseApp
 import fm.donmuse.app.data.MediaStoreRepository
+import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.NativePlayer
 import fm.donmuse.app.widget.WidgetUpdater
 import org.json.JSONArray
@@ -53,7 +56,8 @@ class NativeBridge(
         put("sdk", Build.VERSION.SDK_INT)
         put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
         put("appVersion", BuildConfig.VERSION_NAME)
-        put("server", DonMuseApp.startUrl(activity))
+        put("server", DonMuseApp.API_BASE)
+        put("ui", DonMuseApp.startUrl(activity))
     }.toString()
 
     @JavascriptInterface
@@ -113,8 +117,10 @@ class NativeBridge(
     }
 
     fun onPermissionsResult(granted: List<String>, denied: List<String>) {
-        val g = JSONArray().apply { granted.forEach { add(it) } }
-        val d = JSONArray().apply { denied.forEach { add(it) } }
+        val g = JSONArray()
+        granted.forEach { g.put(it) }
+        val d = JSONArray()
+        denied.forEach { d.put(it) }
         emit("__donmusePermissions", JSONObject().put("granted", g).put("denied", d).toString())
         if (denied.isNotEmpty() && denied.any { it == Manifest.permission.READ_MEDIA_AUDIO || it == Manifest.permission.READ_EXTERNAL_STORAGE }) {
             toast("امنح صلاحية الوسائط لعرض مكتبتك · Grant media access to browse your library")
@@ -205,6 +211,11 @@ class NativeBridge(
     @JavascriptInterface
     fun storeSet(key: String, value: String): String {
         prefs.set(key, value)
+        // Theme / accent / density / language changed → restyle the live page and
+        // keep the persisted document in sync with what the UI shows.
+        if (key == "aura-settings") {
+            webView.post { ThemeInjector.push(activity, webView) }
+        }
         return "ok"
     }
 
@@ -242,9 +253,26 @@ class NativeBridge(
         }
     }
 
+    /** Explicit toggle — used by UI buttons that only know "play/pause". */
     @JavascriptInterface
     fun playPause(): String {
         NativePlayer.toggle(); WidgetUpdater.refresh(activity); return "ok"
+    }
+
+    /**
+     * Idempotent play. The web engine calls this for absolute intent, so a late
+     * `pause()` can never invert it into a pause (the old toggle-only bridge did
+     * exactly that and left the UI out of sync with the service).
+     */
+    @JavascriptInterface
+    fun play(): String {
+        NativePlayer.play(); WidgetUpdater.refresh(activity); return "ok"
+    }
+
+    /** Idempotent pause. */
+    @JavascriptInterface
+    fun pause(): String {
+        NativePlayer.pause(); WidgetUpdater.refresh(activity); return "ok"
     }
 
     @JavascriptInterface
@@ -277,9 +305,14 @@ class NativeBridge(
         return "ok"
     }
 
+    /**
+     * Register a JS function that receives real download progress:
+     *   { id, filename, status: "queued"|"running"|"done"|"error", bytes, total, error? }
+     * The callback is invoked from the download manager thread on the UI thread.
+     */
     @JavascriptInterface
     fun setDownloadCallback(name: String): String {
-        NativeEvents.emit("__donmuseDownloadAck", name)
+        NativeEvents.addDownloadCallback(name)
         return "ok"
     }
 
@@ -288,7 +321,7 @@ class NativeBridge(
     @JavascriptInterface
     fun downloadToMusic(url: String, filename: String, mime: String): String {
         return try {
-            repo.download(activity, url, filename, mime)
+            repo.download(url, filename, mime)
         } catch (e: Exception) {
             JSONObject().put("error", e.message ?: "failed").toString()
         }
@@ -296,9 +329,13 @@ class NativeBridge(
 
     @JavascriptInterface
     fun cancelDownload(id: String): String {
-        repo.cancel(Long.parseLong(id))
+        repo.cancel(id.toLongOrNull() ?: return JSONObject().put("error", "bad id").toString())
         return "ok"
     }
+
+    /** Live status of one transfer, for UIs that prefer polling over callbacks. */
+    @JavascriptInterface
+    fun downloadStatus(id: String): String = repo.status(id.toLongOrNull() ?: -1L)
 
     /* -------------------------------- misc ---------------------------------- */
 

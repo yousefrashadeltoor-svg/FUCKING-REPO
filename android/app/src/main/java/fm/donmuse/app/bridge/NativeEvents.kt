@@ -13,6 +13,7 @@ object NativeEvents {
     private var webView: WebView? = null
     private var activity: Activity? = null
     private val playbackCallbacks = LinkedHashSet<String>()
+    private val downloadCallbacks = LinkedHashSet<String>()
 
     fun attach(activity: Activity, webView: WebView) {
         this.activity = activity
@@ -21,6 +22,21 @@ object NativeEvents {
 
     fun addPlaybackCallback(name: String) {
         playbackCallbacks += name
+    }
+
+    fun addDownloadCallback(name: String) {
+        downloadCallbacks += name
+    }
+
+    /** Real download progress (queued / running / done / error) → JS callback. */
+    fun pushDownload(payloadJson: String) {
+        if (downloadCallbacks.isEmpty()) return
+        val payload = JSONObject.quote(payloadJson)
+        val js = "(function(){var s=$payload;" +
+            downloadCallbacks.joinToString("") { name ->
+                "try{if(window.donmuseNative&&window.donmuseNative['$name'])window.donmuseNative['$name'](s)}catch(e){};"
+            } + "})()"
+        evaluate(js)
     }
 
     fun pushPlayback(stateJson: String) {

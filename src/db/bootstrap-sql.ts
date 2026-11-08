@@ -103,5 +103,14 @@ export const SCHEMA_SQL: string[] = [
   "DO $$ BEGIN ALTER TABLE ONLY public.tracks ADD CONSTRAINT tracks_artist_id_artists_id_fk FOREIGN KEY (artist_id) REFERENCES public.artists(id) ON DELETE CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$",
   "DO $$ BEGIN ALTER TABLE ONLY public.user_track_likes ADD CONSTRAINT user_track_likes_track_id_tracks_id_fk FOREIGN KEY (track_id) REFERENCES public.tracks(id) ON DELETE CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$",
   "DO $$ BEGIN ALTER TABLE ONLY public.user_track_likes ADD CONSTRAINT user_track_likes_user_id_users_id_fk FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE; EXCEPTION WHEN OTHERS THEN NULL; END $$",
-  "INSERT INTO users (email, name, avatar_url, tier) VALUES ('demo@aura.fm','DON MUSE Listener','/logo.svg','ultimate') ON CONFLICT (email) DO NOTHING"
+  // YouTube watch history (separate from the in-app listening history).
+  "CREATE TABLE IF NOT EXISTS youtube_history (id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, video_id text NOT NULL, title text NOT NULL, channel_id text, channel_title text, thumb_url text, duration_sec integer NOT NULL DEFAULT 0, position_sec integer NOT NULL DEFAULT 0, watched_sec integer NOT NULL DEFAULT 0, completed boolean NOT NULL DEFAULT false, watched_at timestamp NOT NULL DEFAULT now())",
+  "CREATE INDEX IF NOT EXISTS yt_history_user_idx ON youtube_history (user_id, watched_at)",
+  "CREATE INDEX IF NOT EXISTS yt_history_video_idx ON youtube_history (user_id, video_id)",
+  // OAuth accounts (Google / YouTube) — additive, never destructive.
+  "CREATE TABLE IF NOT EXISTS oauth_accounts (id serial PRIMARY KEY, user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider text NOT NULL DEFAULT 'google', external_id text, email text, name text, avatar_url text, scopes text NOT NULL DEFAULT '', refresh_token_enc text, access_token_enc text, expires_at timestamp, channel_id text, channel_title text, created_at timestamp NOT NULL DEFAULT now(), updated_at timestamp NOT NULL DEFAULT now())",
+  "CREATE UNIQUE INDEX IF NOT EXISTS oauth_user_provider_idx ON oauth_accounts (user_id, provider)",
+  // NOTE: no shared "demo" account is created any more — every visitor gets their
+  // own signed session user (src/lib/server/session.ts). The old row is left
+  // untouched so nothing a user stored under it is lost.
 ];

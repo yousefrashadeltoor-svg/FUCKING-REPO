@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import ffmpegStatic from "ffmpeg-static";
 import { CACHE_DIR } from "@/lib/server/ytdlp";
+import { safeFetch } from "@/lib/server/ssrf";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,7 +41,8 @@ export async function POST(req: NextRequest) {
   let cover: string | null = null;
   if (coverUrl) {
     try {
-      const r = await fetch(coverUrl, { cache: "no-store", signal: AbortSignal.timeout(8000) });
+      // Only public images, and only image content types.
+      const r = await safeFetch(coverUrl, { cache: "no-store", signal: AbortSignal.timeout(8000) }, { allowContentTypes: /^image\// });
       if (r.ok) {
         const buf = Buffer.from(await r.arrayBuffer());
         if (buf.length > 200 && buf.length < 4_000_000) {

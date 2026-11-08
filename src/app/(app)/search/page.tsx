@@ -8,7 +8,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Search as SearchIcon, BadgeCheck, Loader2, Sparkles } from "lucide-react";
+import { Search as SearchIcon, BadgeCheck, Loader2, Sparkles, Video } from "lucide-react";
 import { motion } from "framer-motion";
 import { TrackList } from "@/components/tracks/TrackList";
 import { AlbumCard, PlaylistCard } from "@/components/cards/Cards";
@@ -18,6 +18,7 @@ import { useT } from "@/lib/i18n";
 import { BrandIcon, BRAND_LABEL } from "@/components/brand/BrandIcon";
 import { formatCount } from "@/lib/utils";
 import { FollowButton } from "@/components/artists/FollowButton";
+import { YouTubeResults } from "@/components/search/YouTubeResults";
 
 export default function SearchPage() {
   return (
@@ -29,6 +30,9 @@ export default function SearchPage() {
 
 const SOURCES = [
   { id: "all", label: null },
+  // "YouTube" is the official Data API search (live + channels + playlists);
+  // "YouTube Music" is the music catalog search below it.
+  { id: "video", label: "YouTube" },
   { id: "youtube", label: "YouTube Music" },
   { id: "spotify", label: "Spotify" },
   { id: "applemusic", label: "Apple Music" },
@@ -42,7 +46,7 @@ const SOURCES = [
   { id: "odysee", label: "Odysee" },
 ] as const;
 
-type SourceId = (typeof SOURCES)[number]["id"];
+type SourceId = (typeof SOURCES)[number]["id"] | "video";
 
 /** Big result card for an artist — real stats on the image, platform badges. */
 function ArtistResult({ artist }: { artist: ArtistDTO }) {
@@ -117,7 +121,7 @@ function SearchPageInner() {
   useEffect(() => setQ(initialQ), [initialQ]);
 
   useEffect(() => {
-    if (!q.trim()) {
+    if (!q.trim() || source === "video") {
       setResults(null);
       setError(null);
       return;
@@ -173,11 +177,17 @@ function SearchPageInner() {
                 : "border-white/10 text-[color:var(--app-muted)] hover:bg-white/[0.06] hover:text-white"
             }`}
           >
-            {s.id !== "all" && <BrandIcon name={s.id} color="brand" className="size-3.5" />}
+            {s.id === "video" ? (
+              <Video className="size-3.5" />
+            ) : (
+              s.id !== "all" && <BrandIcon name={s.id} color="brand" className="size-3.5" />
+            )}
             {s.label ?? t("allSources")}
           </button>
         ))}
       </div>
+
+      {q.trim() && source === "video" && <YouTubeResults query={q} />}
 
       {!q.trim() && (
         <div className="grid place-items-center py-16 text-center">

@@ -125,7 +125,7 @@ export function RightPanel() {
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: 320, opacity: 0 }}
           transition={{ type: "spring", stiffness: 260, damping: 28 }}
-          className="glass-panel z-20 flex w-[340px] shrink-0 flex-col overflow-hidden rounded-2xl"
+          className="glass-panel z-20 flex w-[min(340px,86vw)] shrink-0 flex-col overflow-hidden rounded-2xl max-lg:fixed max-lg:inset-y-3 max-lg:end-3 max-lg:z-40 max-lg:w-[min(340px,calc(100vw-1.5rem))]"
         >
           <div className="flex items-center gap-1 border-b border-white/[0.06] p-2">
             {TABS.map((tb) => {

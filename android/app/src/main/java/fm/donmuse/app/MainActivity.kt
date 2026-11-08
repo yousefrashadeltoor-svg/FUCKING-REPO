@@ -1,9 +1,7 @@
 package fm.donmuse.app
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,22 +9,24 @@ import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.ViewCompat
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import fm.donmuse.app.bridge.NativeBridge
 import fm.donmuse.app.bridge.NativeEvents
-import fm.donmuse.app.bridge.PendingPermissions
+import fm.donmuse.app.data.OfflineWeb
+import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.PlaybackService
 
 /**
@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var bridge: NativeBridge
     private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var themeBootstrapInstalled = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -82,10 +83,20 @@ class MainActivity : ComponentActivity() {
             setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         }
         setContentView(webView)
+        // The activity is edge-to-edge; keep the app inside the actual safe area.
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(webView)
 
         bridge = NativeBridge(this, webView, permissionLauncher, manageStorageLauncher)
         webView.addJavascriptInterface(bridge, "DonMuseNative")
         NativeEvents.attach(this, webView)
+        // Hand the saved theme/accent/density/language to the page before it
+        // paints, so a cold start never flashes the default (wrong) theme.
+        themeBootstrapInstalled = ThemeInjector.install(this, webView)
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -115,6 +126,25 @@ class MainActivity : ComponentActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            /**
+             * The bundled UI is served by OfflineWeb (a real https origin backed
+             * by assets/www): correct MIME types, one shared origin, no network.
+             */
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest,
+            ): WebResourceResponse? {
+                val url = request.url
+                if (!OfflineWeb.isOurs(url) || OfflineWeb.isApiPath(url)) return null
+                // Always serve the packaged appassets origin locally. Never
+                // replace a missing local interface by silently loading the web host.
+                return OfflineWeb.resolve(
+                    this@MainActivity,
+                    OfflineWeb.pathOf(url),
+                    isNavigation = request.isForMainFrame,
+                )
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val host = url.host ?: return false
@@ -135,6 +165,9 @@ class MainActivity : ComponentActivity() {
                     "document.documentElement.dataset.host='android';",
                     null,
                 )
+                // Fallback for WebViews without document-start scripts: paint the
+                // persisted theme as soon as the page exists.
+                if (!themeBootstrapInstalled) ThemeInjector.push(this@MainActivity, webView)
             }
         }
 
@@ -151,15 +184,23 @@ class MainActivity : ComponentActivity() {
             }
         })
 
-        requestStartupPermissions()
         webView.loadUrl(firstUrl(intent))
     }
 
     private fun isInternalHost(host: String): Boolean =
-        host == DonMuseApp.WEB_HOST || host.endsWith(".donmuse.app") || host == "localhost"
+        host == DonMuseApp.WEB_HOST ||
+            host.endsWith(".donmuse.app") ||
+            host == "localhost" ||
+            host == "appassets.androidplatform.net"
+
+    /** True when this APK actually carries the static UI bundle. */
+    private fun hasBundledUi(): Boolean = DonMuseApp.hasBundledUi(this)
 
     private fun firstUrl(intent: Intent?): String {
-        val data: Uri? = intent?.data ?: return DonMuseApp.startUrl(this)
+        // `intent?.data` is already a smart-cast Uri?: keep the null check local so
+        // the compiler can narrow it (the old `val data: Uri? = … ?: return`
+        // form left it nullable for every later use).
+        val data: Uri = intent?.data ?: return DonMuseApp.startUrl(this)
         return when {
             data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
             data.scheme?.startsWith("content") == true ->
@@ -168,28 +209,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Android 13+ media/notification permissions + storage on older versions. */
-    private fun requestStartupPermissions() {
-        val wanted = mutableListOf(Manifest.permission.POST_NOTIFICATIONS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            wanted += Manifest.permission.READ_MEDIA_AUDIO
-            wanted += Manifest.permission.READ_MEDIA_VIDEO
-            wanted += Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            wanted += Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        val missing = wanted.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isNotEmpty()) {
-            PendingPermissions.pending = missing.toTypedArray()
-            permissionLauncher.launch(missing.toTypedArray())
-        }
-    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val data: Uri? = intent.data ?: return
+        val data: Uri = intent.data ?: return
         val target = when {
             data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
             data.scheme?.startsWith("content") == true ->

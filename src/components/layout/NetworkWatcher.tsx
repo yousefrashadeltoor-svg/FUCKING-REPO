@@ -28,6 +28,8 @@ export function NetworkWatcher() {
      keeps working with no connection. The Android host serves its own assets. */
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    // Bundled/static builds already ship every asset — see OfflineInit.
+    if ((window as { __DM_OFFLINE__?: boolean; __DM_STATIC__?: boolean }).__DM_OFFLINE__) return;
     if (document.documentElement.dataset.host === "android") return;
     navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
   }, []);

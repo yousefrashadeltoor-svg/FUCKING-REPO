@@ -245,4 +245,15 @@ export interface StatsDTO {
   topTracks: TrackDTO[];
   topArtists: (ArtistDTO & { plays: number })[];
   genreDistribution: { genre: string; plays: number }[];
+  /** real aggregates computed from listening_history */
+  uniqueTracks?: number;
+  uniqueArtists?: number;
+  /** consecutive days with at least one play, ending today or yesterday */
+  streakDays?: number;
+  /** local-hour histogram of plays (0–23), real timestamps */
+  byHour?: number[];
+  /** ISO date → plays, last 30 days */
+  last30Days?: { date: string; plays: number }[];
+  /** YouTube watch history is counted separately and never mixed in */
+  youtube?: { watched: number; completed: number; minutes: number } | null;
 }

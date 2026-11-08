@@ -10,6 +10,7 @@ import { bestAudioSource, downloadSource, extractInfo, CACHE_DIR } from "@/lib/s
 import { FFMPEG_PATH, fetchCover } from "@/lib/server/transcode";
 import { clipFormat } from "@/lib/server/preset-args";
 import { resolveSource } from "@/lib/server/resolve-source";
+import { canDownload, externalFallback, policyFor } from "@/lib/playback-policy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,6 +41,14 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     .where(eq(tracks.id, trackId))
     .limit(1);
   if (!row || (!row.sourceId && !row.sourceUrl)) return Response.json({ error: "Track not found" }, { status: 404 });
+  // Clipping produces a downloadable file → same policy as download.
+  if (!canDownload(row.source)) {
+    const policy = policyFor(row.source);
+    return Response.json(
+      { error: policy.note, blocked: true, source: row.source, external: externalFallback(row.source, row.sourceId) },
+      { status: 403 },
+    );
+  }
   const [artist] = await db.select({ name: artists.name }).from(artists).where(eq(artists.id, row.artistId)).limit(1);
   const album = row.albumId ? (await db.select({ coverUrl: albums.coverUrl }).from(albums).where(eq(albums.id, row.albumId)).limit(1))[0] : null;
   const cacheKey = `${row.source}_${row.sourceId ?? String(trackId)}`;

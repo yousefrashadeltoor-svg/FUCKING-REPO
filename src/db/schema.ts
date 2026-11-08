@@ -254,6 +254,67 @@ export const listeningHistory = pgTable(
   ],
 );
 
+/**
+ * Encrypted Google/YouTube OAuth tokens, one row per DON MUSE user.
+ * The refresh token is AES-256-GCM encrypted with GOOGLE_TOKEN_KEY; the access
+ * token is cached in memory only. Nothing here is ever exposed to the browser.
+ */
+export const oauthAccounts = pgTable(
+  "oauth_accounts",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("google"),
+    /** Google account subject (sub) — stable id, not the email */
+    externalId: text("external_id"),
+    email: text("email"),
+    name: text("name"),
+    avatarUrl: text("avatar_url"),
+    scopes: text("scopes").notNull().default(""),
+    /** AES-256-GCM: iv.tag.ciphertext, all base64url */
+    refreshTokenEnc: text("refresh_token_enc"),
+    accessTokenEnc: text("access_token_enc"),
+    expiresAt: timestamp("expires_at"),
+    channelId: text("channel_id"),
+    channelTitle: text("channel_title"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex("oauth_user_provider_idx").on(t.userId, t.provider)],
+);
+
+/**
+ * YouTube watch history — deliberately SEPARATE from `listening_history`.
+ * The in-app history is what DON MUSE played (local/other providers); this table
+ * is only for official YouTube content, so the two lists never contaminate each
+ * other and the user can clear either one independently.
+ */
+export const youtubeHistory = pgTable(
+  "youtube_history",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    videoId: text("video_id").notNull(),
+    title: text("title").notNull(),
+    channelId: text("channel_id"),
+    channelTitle: text("channel_title"),
+    thumbUrl: text("thumb_url"),
+    durationSec: integer("duration_sec").notNull().default(0),
+    positionSec: integer("position_sec").notNull().default(0),
+    watchedSec: integer("watched_sec").notNull().default(0),
+    completed: boolean("completed").notNull().default(false),
+    watchedAt: timestamp("watched_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("yt_history_user_idx").on(t.userId, t.watchedAt),
+    index("yt_history_video_idx").on(t.userId, t.videoId),
+  ],
+);
+
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id")
@@ -279,3 +340,5 @@ export type PlaylistTrackRow = typeof playlistTracks.$inferSelect;
 export type ListeningHistoryRow = typeof listeningHistory.$inferSelect;
 export type ArtistFollowRow = typeof artistFollows.$inferSelect;
 export type AlbumLikeRow = typeof albumLikes.$inferSelect;
+export type OAuthAccountRow = typeof oauthAccounts.$inferSelect;
+export type YouTubeHistoryRow = typeof youtubeHistory.$inferSelect;

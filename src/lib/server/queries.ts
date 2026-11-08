@@ -15,6 +15,7 @@ import {
   users,
 } from "@/db/schema";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { ensureSessionUser, getCurrentUser } from "@/lib/server/session";
 import type {
   AlbumDTO,
   ArtistDTO,
@@ -176,31 +177,32 @@ function toTrackDTO(
 /* ------------------------------ helpers ------------------------------ */
 
 /** The demo user that owns the seeded library. */
+/**
+ * The current listener.
+ *
+ * Kept under the old name so every existing call site automatically becomes
+ * per-user, but it is no longer a shared throw-away account: `ensureSessionUser`
+ * resolves the signed session cookie to its own `users` row, so two visitors
+ * never see each other's playlists, likes, follows or history.
+ */
 export async function getDemoUser(): Promise<UserDTO> {
-  await ensureSchema();
-  const rows = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, "demo@aura.fm"))
+  return ensureSessionUser();
+}
+
+/** Read-only variant for server components that must not set cookies. */
+export async function getViewer(): Promise<UserDTO> {
+  return getCurrentUser();
+}
+
+/** Guard for mutations: throws a 404 when the resource is not owned. */
+export async function assertPlaylistOwner(playlistId: number, userId: number): Promise<boolean> {
+  const [row] = await db
+    .select({ ownerId: playlists.ownerId, isPublic: playlists.isPublic })
+    .from(playlists)
+    .where(eq(playlists.id, playlistId))
     .limit(1);
-  const row = rows[0];
-  if (!row) {
-    const [created] = await db
-      .insert(users)
-      .values({ email: "demo@aura.fm", name: "DON MUSE Listener", avatarUrl: "/logo.svg", tier: "ultimate" })
-      .onConflictDoNothing()
-      .returning();
-    const u = created ?? (await db.select().from(users).where(eq(users.email, "demo@aura.fm")).limit(1))[0];
-    return { id: u.id, email: u.email, name: u.name, avatarUrl: u.avatarUrl, tier: u.tier as UserDTO["tier"], locale: u.locale };
-  }
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    avatarUrl: row.avatarUrl,
-    tier: row.tier as UserDTO["tier"],
-    locale: row.locale,
-  };
+  if (!row) return false;
+  return row.ownerId === userId || row.isPublic;
 }
 
 async function artistNameMap(ids: number[]): Promise<Map<number, string>> {
@@ -557,6 +559,42 @@ export async function getStats(userId: number): Promise<StatsDTO> {
     .orderBy(desc(sql`count(*)`))
     .limit(6);
 
+  // ---- real aggregates (no estimation, no filler) ----
+  const [{ uniq }] = await db
+    .select({ uniq: sql<number>`count(distinct ${listeningHistory.trackId})::int` })
+    .from(listeningHistory)
+    .where(eq(listeningHistory.userId, userId));
+  const [{ uniqArtists }] = await db
+    .select({ uniqArtists: sql<number>`count(distinct ${tracks.artistId})::int` })
+    .from(listeningHistory)
+    .innerJoin(tracks, eq(listeningHistory.trackId, tracks.id))
+    .where(eq(listeningHistory.userId, userId));
+
+  const hourRows = await db
+    .select({ hour: sql<number>`extract(hour from ${listeningHistory.playedAt})::int`, plays: sql<number>`count(*)::int` })
+    .from(listeningHistory)
+    .where(eq(listeningHistory.userId, userId))
+    .groupBy(sql`extract(hour from ${listeningHistory.playedAt})`);
+  const byHour = Array.from({ length: 24 }, (_, i) => hourRows.find((r) => Number(r.hour) === i)?.plays ?? 0);
+
+  const dayRows = await db
+    .select({ day: sql<string>`to_char(${listeningHistory.playedAt}, 'YYYY-MM-DD')`, plays: sql<number>`count(*)::int` })
+    .from(listeningHistory)
+    .where(and(eq(listeningHistory.userId, userId), sql`${listeningHistory.playedAt} > now() - interval '30 days'`))
+    .groupBy(sql`to_char(${listeningHistory.playedAt}, 'YYYY-MM-DD')`)
+    .orderBy(sql`to_char(${listeningHistory.playedAt}, 'YYYY-MM-DD')`);
+  const last30Days = dayRows.map((r) => ({ date: r.day, plays: r.plays }));
+
+  // streak: walk back from today (or yesterday) while a day has plays
+  const daySet = new Set(dayRows.map((r) => r.day));
+  let streakDays = 0;
+  const cursor = new Date();
+  if (!daySet.has(cursor.toISOString().slice(0, 10))) cursor.setDate(cursor.getDate() - 1);
+  while (daySet.has(cursor.toISOString().slice(0, 10))) {
+    streakDays++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
   const artistNames = await artistNameMap(artistRows.map((r) => r.artistId));
   const artistIds = artistRows.map((r) => r.artistId);
   const fullArtists = await db.select().from(artists).where(inArray(artists.id, artistIds.length ? artistIds : [-1]));
@@ -564,6 +602,11 @@ export async function getStats(userId: number): Promise<StatsDTO> {
   return {
     totalPlays: totals?.plays ?? 0,
     totalMinutes: Math.round(totals?.minutes ?? 0),
+    uniqueTracks: Number(uniq ?? 0),
+    uniqueArtists: Number(uniqArtists ?? 0),
+    streakDays,
+    byHour,
+    last30Days,
     topTracks: await hydrateTracks(topT.map((r) => r.t), userId),
     topArtists: artistRows.map((r) => {
       const full = fullArtists.find((a) => a.id === r.artistId);

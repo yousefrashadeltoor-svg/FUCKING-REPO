@@ -14,6 +14,8 @@
 //  `isNative` is false and the web implementation is used instead.
 // ============================================================================
 
+import { needsOfficialEmbed } from "@/lib/playback-policy";
+
 export interface DeviceSongDTO {
   id: string; // MediaStore id (string so it survives JSON)
   uri: string; // content://media/external/audio/media/123
@@ -65,6 +67,9 @@ interface DonMuseNativeInterface {
   storeKeys(): string;
   playQueue(json: string): string;
   playPause(): string;
+  /** absolute, idempotent commands (present from APK 1.1); optional for old APKs */
+  play?(): string;
+  pause?(): string;
   next(): string;
   previous(): string;
   seekTo(ms: number): string;
@@ -146,6 +151,41 @@ export function requestMediaPermissions(kinds: MediaPerm[] = ["audio", "video", 
   return (res.denied?.length ?? 0) === 0;
 }
 
+/** Wait for Android's real permission-dialog result before scanning MediaStore. */
+export async function requestMediaPermissionsAsync(
+  kinds: MediaPerm[] = ["audio", "video", "notifications"],
+): Promise<boolean> {
+  const b = bridge();
+  if (!b || typeof window === "undefined") return false;
+  const required = kinds.filter((kind) => kind !== "notifications");
+  const hasAccess = () => required.length === 0 || required.some((kind) => hasMediaPermission(kind));
+  if (hasAccess()) return true;
+
+  return new Promise<boolean>((resolve) => {
+    const registry = (window.donmuseNative ??= {});
+    const previous = registry.__donmusePermissions;
+    let settled = false;
+    const finish = (granted: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      if (previous) registry.__donmusePermissions = previous;
+      else delete registry.__donmusePermissions;
+      resolve(granted);
+    };
+    const timeout = window.setTimeout(() => finish(hasAccess()), 120_000);
+    registry.__donmusePermissions = () => {
+      // NativeEvents calls this only after Android has closed the dialog.
+      finish(hasAccess());
+    };
+    try {
+      b.requestPermissions(kinds.join(","));
+    } catch {
+      finish(kinds.every((kind) => hasMediaPermission(kind)));
+    }
+  });
+}
+
 export function hasMediaPermission(kind: MediaPerm): boolean {
   const b = bridge();
   if (!b) return false;
@@ -187,6 +227,9 @@ export const nativePlayback = {
   canHandle(track: { streamUrl?: string; source?: string }): boolean {
     const b = bridge();
     if (!b) return false;
+    // YouTube-family content is official-embed only: the WebView's IFrame player
+    // owns it, never ExoPlayer, so it can't be played in the background.
+    if (track.source && needsOfficialEmbed(track.source)) return false;
     const url = track.streamUrl ?? "";
     if (!url) return false;
     if (url.startsWith("content://") || url.startsWith("file://")) return true;
@@ -236,15 +279,18 @@ export const nativePlayback = {
       durationSec: number;
       streamUrl: string;
       source: string;
+      sourceId?: string | null;
     },
     opts: { autoplay?: boolean; startAt?: number; uri?: string; queue?: NativeQueueItem[] } = {},
   ): void {
     const b = bridge();
     if (!b) return;
     const raw = opts.uri ?? track.streamUrl;
-    const uri = raw.startsWith("/") ? new URL(raw, window.location.origin).toString() : raw;
+    const info = parse<{ server?: string }>(safe(() => b.platformInfo(), "{}"), {});
+    const base = info.server && /^https?:/.test(info.server) ? info.server : window.location.origin;
+    const uri = raw.startsWith("/") ? new URL(raw, base).toString() : raw;
     const item: NativeQueueItem = {
-      id: String(track.id),
+      id: `${track.source}:${track.sourceId ?? ""}:${track.id}`,
       uri,
       title: track.title,
       artist: track.artistName,
@@ -268,11 +314,34 @@ export const nativePlayback = {
     );
   },
 
+  /**
+   * Absolute play. Uses the dedicated `play()` command when the installed APK
+   * has it; older APKs only expose a toggle, so we consult the real state first
+   * and only toggle when it would actually start playback (never inverting).
+   */
   play(): void {
     const b = bridge();
-    if (b) safe(() => b.playPause(), "");
+    if (!b) return;
+    if (typeof b.play === "function") {
+      safe(() => b.play!(), "");
+      return;
+    }
+    if (!this.state().playing) safe(() => b.playPause(), "");
   },
+
+  /** Absolute pause — same reasoning, mirror image. */
   pause(): void {
+    const b = bridge();
+    if (!b) return;
+    if (typeof b.pause === "function") {
+      safe(() => b.pause!(), "");
+      return;
+    }
+    if (this.state().playing) safe(() => b.playPause(), "");
+  },
+
+  /** Explicit toggle, for a UI button that genuinely means "flip". */
+  toggle(): void {
     const b = bridge();
     if (b) safe(() => b.playPause(), "");
   },
@@ -401,7 +470,45 @@ export function writeDeviceArtwork(uri: string, base64: string): { ok: boolean; 
   );
 }
 
-/** Save a remote audio file into the device Music collection (real download). */
+/** Progress events pushed by the Android download manager. */
+export interface DownloadProgress {
+  id: number;
+  filename: string;
+  status: "queued" | "running" | "done" | "error";
+  bytes: number;
+  total: number;
+  error?: string;
+  uri?: string;
+}
+
+/**
+ * Subscribe to REAL download progress from the native download manager.
+ * Returns an unsubscribe function; on the web (no bridge) it never fires.
+ */
+export function onDownloadProgress(cb: (p: DownloadProgress) => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const b = bridge();
+  if (!b) return () => {};
+  const registry = (window.donmuseNative ??= {});
+  const name = `__donmuseDownload_${Math.random().toString(36).slice(2)}`;
+  registry[name] = (val) => {
+    try {
+      cb(typeof val === "string" ? (JSON.parse(val) as DownloadProgress) : (val as DownloadProgress));
+    } catch {
+      /* malformed push — ignore */
+    }
+  };
+  safe(() => b.setDownloadCallback(name), "");
+  return () => {
+    delete registry[name];
+  };
+}
+
+/**
+ * Save a remote audio/video file into the device Music/Movies collection.
+ * Returns `{ id, pending, filename }` (JSON) on Android, "" on the web — the
+ * caller then listens with `onDownloadProgress`.
+ */
 export function downloadToDeviceLibrary(url: string, filename: string, mime = "audio/mpeg"): string {
   const b = bridge();
   if (!b) return "";

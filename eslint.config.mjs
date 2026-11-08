@@ -4,7 +4,10 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 export default defineConfig([
   // Keep the starter on the flat config export that actually runs under the pinned ESLint/Next toolchain.
   ...nextCoreWebVitals,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+  // `scripts/offline-runtime.js` is a template with @@…@@ placeholders that is
+  // rendered by scripts/offline-bundle.mjs at build time, so it is not valid JS
+  // on its own and must not be linted as source.
+  globalIgnores([".next/**", "out/**", "out-offline/**", "build/**", "next-env.d.ts", "scripts/offline-runtime.js"]),
   {
     rules: {
       // These two rules are React-Compiler experiments. The app legitimately

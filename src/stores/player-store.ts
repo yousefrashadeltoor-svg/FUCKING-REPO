@@ -30,6 +30,12 @@ export interface PlayerState {
   // --- audio prefs ---
   crossfadeSec: number;
   eqBands: number[];
+  /** extra low-shelf boost in dB (-12…+12) on top of the 10 bands */
+  bassBoost: number;
+  /** master pre-amp gain in dB (-12…+12); lets a boosted EQ avoid clipping */
+  preamp: number;
+  /** stereo balance, -1 = hard left … +1 = hard right */
+  balance: number;
   // --- sleep timer ---
   sleepTimerEndsAt: number | null;
   // --- library ---
@@ -55,6 +61,9 @@ export interface PlayerState {
   setRepeatCount: (n: number) => void;
   setCrossfade: (sec: number) => void;
   setEqBands: (bands: number[]) => void;
+  setBassBoost: (db: number) => void;
+  setPreamp: (db: number) => void;
+  setBalance: (v: number) => void;
   setEqBand: (i: number, db: number) => void;
   setSleepTimer: (msFromNow: number | null) => void;
   addToQueue: (track: TrackDTO) => void;
@@ -97,6 +106,9 @@ export const usePlayerStore = create<PlayerState>()(
       origin: null,
       crossfadeSec: 0,
       eqBands: EQ_DEFAULT,
+      bassBoost: 0,
+      preamp: 0,
+      balance: 0,
       sleepTimerEndsAt: null,
       likedIds: [],
 
@@ -220,6 +232,9 @@ export const usePlayerStore = create<PlayerState>()(
           eqBands[i] = Math.min(12, Math.max(-12, db));
           return { eqBands };
         }),
+      setBassBoost: (db) => set({ bassBoost: Math.min(12, Math.max(-12, db)) }),
+      setPreamp: (db) => set({ preamp: Math.min(12, Math.max(-12, db)) }),
+      setBalance: (v) => set({ balance: Math.min(1, Math.max(-1, v)) }),
       setSleepTimer: (msFromNow) =>
         set({ sleepTimerEndsAt: msFromNow === null ? null : Date.now() + msFromNow }),
 
@@ -299,6 +314,9 @@ export const usePlayerStore = create<PlayerState>()(
         repeat: s.repeat,
         crossfadeSec: s.crossfadeSec,
         eqBands: s.eqBands,
+        bassBoost: s.bassBoost,
+        preamp: s.preamp,
+        balance: s.balance,
         likedIds: s.likedIds,
       }),
       merge: (persisted, current) => {

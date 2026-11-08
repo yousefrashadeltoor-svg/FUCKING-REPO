@@ -13,6 +13,9 @@ declare global {
   interface Window {
     __DM_API_BASE__?: string;
     __DM_STATIC__?: boolean;
+    /** Set by the APK's offline runtime (scripts/offline-runtime.js). */
+    __DM_OFFLINE__?: boolean;
+    __DM_LAST_ROUTE__?: string;
   }
 }
 

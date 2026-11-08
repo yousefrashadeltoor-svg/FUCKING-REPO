@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import fm.donmuse.app.data.OfflineWeb
 import androidx.core.app.NotificationCompat
 import android.os.Build
 import androidx.work.Constraints
@@ -63,31 +64,60 @@ class DonMuseApp : Application() {
         val WEB_HOST: String = BuildConfig.WEB_HOST
 
         /**
+         * Origin of the server that serves the /api routes. When the UI is bundled the
+         * page itself is a `file://` asset, so background work (release checks)
+         * must still talk to the hosted origin — never to the asset path.
+         */
+        val API_BASE: String = "https://$WEB_HOST"
+
+        /**
          * The UI is loaded from the bundled asset build when present
          * (`app/src/main/assets/www/index.html`), otherwise from the hosted
          * build — so the APK always opens something real.
          */
+        private fun hasAssetWithExtension(ctx: Context, folder: String, extension: String): Boolean {
+            return ctx.assets.list(folder).orEmpty().any { name ->
+                if (name.endsWith(extension, ignoreCase = true)) {
+                    true
+                } else if (!name.contains('.')) {
+                    hasAssetWithExtension(ctx, "$folder/$name", extension)
+                } else {
+                    false
+                }
+            }
+        }
+
         fun hasBundledUi(ctx: Context): Boolean = runCatching {
-            ctx.assets.open("www/index.html").close()
-            true
+            ctx.assets.open("www/index.html").use { }
+            val hasJavaScript = hasAssetWithExtension(ctx, "www/_next/static", ".js")
+            val hasStyles = hasAssetWithExtension(ctx, "www/_next/static", ".css")
+            val hasRoutes = listOf("radio", "quran", "settings", "search").all { route ->
+                ctx.assets.open("www/$route/index.html").use { }
+                true
+            }
+            hasJavaScript && hasStyles && hasRoutes
         }.getOrDefault(false)
 
-        fun startUrl(ctx: Context): String =
-            if (hasBundledUi(ctx)) "file:///android_asset/www/index.html"
-            else "https://$WEB_HOST"
+        /**
+         * Where the UI opens.
+         *
+         * The bundled build is served through a real origin
+         * (OfflineWeb.ORIGIN, backed by assets/www) rather than file:// —
+         * file:// pages get no shared origin in a WebView, which is what made
+         * images, styles and in-app links fail. See data/OfflineWeb.kt.
+         */
+        // The app shell always opens from its packaged local files. Network is
+        // optional for live streams, login and remote catalogue operations only.
+        fun startUrl(ctx: Context): String = OfflineWeb.url("/")
 
         /**
          * Deep link → concrete URL for either host.
-         * Bundled UI ships one index.html per route, so a path maps to
-         * `www/<route>/index.html`; the hosted build takes the normal path.
+         * The bundled build keeps normal web paths (`/radio`), which the asset
+         * router maps onto `www/radio/index.html`.
          */
         fun routeUrl(ctx: Context, path: String): String {
             val clean = path.trim('/').split('?').first().split('#').first()
-            if (hasBundledUi(ctx)) {
-                return if (clean.isEmpty()) startUrl(ctx)
-                else "file:///android_asset/www/$clean/index.html"
-            }
-            return if (clean.isEmpty()) startUrl(ctx) else "https://$WEB_HOST/$clean"
+            return if (clean.isEmpty()) startUrl(ctx) else OfflineWeb.url("/$clean")
         }
     }
 }

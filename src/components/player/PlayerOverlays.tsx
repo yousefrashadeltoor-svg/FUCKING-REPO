@@ -4,6 +4,7 @@
 //   NowPlaying (70) → InfoSheet (92) → Shortcuts (95)
 import { useEffect } from "react";
 import { NowPlaying } from "./NowPlaying";
+import { FloatingDownloadWidget } from "./FloatingDownloadWidget";
 import { InfoSheet } from "./InfoSheet";
 import { ShortcutsOverlay } from "@/components/shared/ShortcutsOverlay";
 import { useUIStore } from "@/stores/ui-store";
@@ -34,6 +35,7 @@ export function PlayerOverlays() {
 
   return (
     <>
+      <FloatingDownloadWidget />
       <NowPlaying />
       <InfoSheet />
       <ShortcutsOverlay />

@@ -180,6 +180,16 @@ html {
 }
 [data-theme="daylight"] { color-scheme: light; }
 
+html,
+body {
+  /* A phone must never have to be scrolled sideways: the app fits the viewport
+     in every orientation and at every zoom level. */
+  max-width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background: var(--app-bg);
   color: var(--app-text);
@@ -188,6 +198,18 @@ body {
   text-rendering: optimizeLegibility;
   overflow: hidden;
   overscroll-behavior: none;
+  /* Android system-bar insets are applied to the WebView by MainActivity. */
+}
+
+/* Long titles, urls and metadata break instead of pushing the layout wide. */
+* {
+  min-width: 0;
+}
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
 }
 
 /* Text that must always stay readable regardless of theme. */
@@ -477,11 +499,7 @@ input[type="range"].aura-eq::-moz-range-thumb {
   * { scroll-behavior: auto !important; }
 }
 
-/* Android WebView: keep the shell out of the notification bar / gesture area. */
-html[data-host="android"] body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
+/* Android safe-area is applied once at the native WebView boundary. */
 
 /* Crisp text selection + focus rings that stay visible on every theme. */
 :focus-visible {

@@ -8,6 +8,7 @@ import { bestAudioSource, downloadSource, extractInfo, sweepCache } from "@/lib/
 import { FFMPEG_PATH, fetchCover, presetById, remuxNative, transcode } from "@/lib/server/transcode";
 import { resolveSource } from "@/lib/server/resolve-source";
 import { CACHE_DIR } from "@/lib/server/ytdlp";
+import { canDownload, externalFallback, policyFor } from "@/lib/playback-policy";
 import path from "node:path";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,20 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     .where(eq(tracks.id, trackId))
     .limit(1);
   if (!row || (!row.sourceId && !row.sourceUrl)) return Response.json({ error: "Track not found" }, { status: 404 });
+
+  // Respect the source's policy before touching any extractor or file.
+  if (!canDownload(row.source)) {
+    const policy = policyFor(row.source);
+    return Response.json(
+      {
+        error: policy.note,
+        blocked: true,
+        source: row.source,
+        external: externalFallback(row.source, row.sourceId),
+      },
+      { status: 403 },
+    );
+  }
   const [artist] = await db.select({ name: artists.name }).from(artists).where(eq(artists.id, row.artistId)).limit(1);
   const album = row.albumId
     ? (await db.select({ title: albums.title, coverUrl: albums.coverUrl }).from(albums).where(eq(albums.id, row.albumId)).limit(1))[0]

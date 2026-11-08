@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- ---------------------------- permissions ---------------------------- -->
+    <!-- ========================================== permissions ========================================== -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -100,6 +100,12 @@
                 <action android:name="fm.donmuse.app.WIDGET_STOP" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/mini_player_widget_info" />
+        </receiver>
+        <receiver android:name=".widget.QuickAccessWidget" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/quick_access_widget_info" />
         </receiver>
 
         <receiver android:name=".notify.BootReceiver" android:exported="true">

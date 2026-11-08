@@ -57,7 +57,16 @@ export async function GET(req: NextRequest) {
     source === "all" || source === "youtube" ? searchYouTubeArtists(q, 8).catch(() => []) : Promise.resolve([]),
     source === "all" || source === "youtube" ? searchYouTubeAlbums(q, 10).catch(() => []) : Promise.resolve([]),
   ]);
-  const [artistRowsYT, albumRowsYT] = await Promise.all([upsertArtists(ytArtists), upsertAlbums(ytAlbums)]);
+  // Real channel hits → catalog artists. The official API returns no release
+  // year for playlists, so year stays null (never invented).
+  const albumHits = (ytAlbums as { id: string; title: string; channel?: string; thumb: string | null }[]).map((a) => ({
+    id: a.id,
+    title: a.title,
+    artistName: a.channel ?? "Unknown Artist",
+    year: null as string | null,
+    imageUrl: a.thumb,
+  }));
+  const [artistRowsYT, albumRowsYT] = await Promise.all([upsertArtists(ytArtists), upsertAlbums(albumHits)]);
   const local = await searchAll(q, user.id);
   // YouTube Music artists/albums first (real photos / covers), then local matches.
   const artistNames = new Map(albumRowsYT.map((a) => [a.artistId, ""]));

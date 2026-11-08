@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { playlistTracks } from "@/db/schema";
+import { playlistTracks, playlists } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getDemoUser, getPlaylistDetail } from "@/lib/server/queries";
+import { ensureSessionUser } from "@/lib/server/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,10 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   if (!Number.isInteger(pid)) {
     return Response.json({ error: "Invalid playlist id" }, { status: 400 });
   }
+  const owner = await ensureSessionUser();
+  const [pl] = await db.select({ ownerId: playlists.ownerId }).from(playlists).where(eq(playlists.id, pid)).limit(1);
+  if (!pl) return Response.json({ error: "Playlist not found" }, { status: 404 });
+  if (pl.ownerId !== owner.id) return Response.json({ error: "Not your playlist" }, { status: 403 });
   let body: { trackIds?: number[] };
   try {
     body = await req.json();

@@ -32,7 +32,13 @@ const globalForDb = globalThis as typeof globalThis & {
 
 function localDir(): string {
   const fromUrl = databaseUrl?.startsWith("pglite:") ? databaseUrl.slice("pglite:".length) : "";
-  const dir = fromUrl || process.env.DONMUSE_DATA_DIR || path.join(process.cwd(), "data", "pglite");
+  // Vercel's deployed function bundle (/var/task) is read-only. Use its
+  // writable temporary directory for the embedded fallback. This storage is
+  // ephemeral per function instance; production must set DATABASE_URL.
+  const vercelTmp = process.env.VERCEL === "1"
+    ? path.join("/tmp", "donmuse-pglite")
+    : "";
+  const dir = fromUrl || process.env.DONMUSE_DATA_DIR || vercelTmp || path.join(process.cwd(), "data", "pglite");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -41,7 +47,13 @@ export let pool: Pool | undefined;
 
 if (!globalForDb.__donmuseDb) {
   if (useLocal) {
-    const pg = globalForDb.__donmusePglite ?? new PGlite(localDir());
+    // Vercel Functions run from a read-only deployment filesystem. Keep the
+    // no-DATABASE_URL fallback in memory there instead of trying to create
+    // ./data/pglite under /var/task. This is only a temporary compatibility
+    // fallback: production persistence still requires a shared DATABASE_URL.
+    const pg = globalForDb.__donmusePglite ?? new PGlite(
+      process.env.VERCEL === "1" ? undefined : localDir(),
+    );
     globalForDb.__donmusePglite = pg;
     globalForDb.__donmuseDb = drizzlePglite(pg);
   } else {

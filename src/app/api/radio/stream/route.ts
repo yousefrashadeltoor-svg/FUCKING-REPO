@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { registerClick } from "@/lib/server/radio";
+import { safeFetch } from "@/lib/server/ssrf";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 3600;
+// Vercel Hobby Fluid Compute caps a single response at 300 seconds.
+// Clients should reconnect the live station when this bounded response ends.
+export const maxDuration = 300;
 
 // ---------------------------------------------------------------------------
 //  GET /api/radio/stream?u=<encoded upstream url>&id=<station uuid>
@@ -25,19 +28,25 @@ export async function GET(req: NextRequest) {
   const connectTimer = setTimeout(() => ctrl.abort(), 20_000);
   let upstream: Response;
   try {
-    upstream = await fetch(u, {
-      headers: {
-        "User-Agent": "DONMUSE/1.0 (radio player; like VLC/3.0)",
-        "Icy-MetaData": "0",
-        Accept: "*/*",
+    // SSRF guard: the URL comes from the client, so it must resolve to a public
+    // host (and every redirect is re-validated inside safeFetch).
+    upstream = await safeFetch(
+      u,
+      {
+        headers: {
+          "User-Agent": "DONMUSE/1.0 (radio player; like VLC/3.0)",
+          "Icy-MetaData": "0",
+          Accept: "*/*",
+        },
+        cache: "no-store",
+        signal: ctrl.signal,
       },
-      redirect: "follow",
-      cache: "no-store",
-      signal: ctrl.signal,
-    });
-  } catch {
+      { maxHops: 4 },
+    );
+  } catch (err) {
     clearTimeout(connectTimer);
-    return Response.json({ error: "Station is not responding" }, { status: 502 });
+    const message = err instanceof Error && /address|URL|host|redirect/i.test(err.message) ? err.message : "Station is not responding";
+    return Response.json({ error: message }, { status: 502 });
   }
   clearTimeout(connectTimer);
   if (!upstream.ok || !upstream.body) {

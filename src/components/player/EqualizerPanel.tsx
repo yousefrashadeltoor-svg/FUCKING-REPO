@@ -18,9 +18,15 @@ export function EqualizerPanel({ onClose }: Props) {
   const eqBands = usePlayerStore((s) => s.eqBands);
   const setEqBands = usePlayerStore((s) => s.setEqBands);
   const setEqBand = usePlayerStore((s) => s.setEqBand);
+  const bassBoost = usePlayerStore((s) => s.bassBoost);
+  const setBassBoost = usePlayerStore((s) => s.setBassBoost);
+  const preamp = usePlayerStore((s) => s.preamp);
+  const setPreamp = usePlayerStore((s) => s.setPreamp);
+  const balance = usePlayerStore((s) => s.balance);
+  const setBalance = usePlayerStore((s) => s.setBalance);
 
   return (
-    <div className="glass-modal w-[380px] rounded-2xl p-4" dir="ltr">
+    <div className="glass-modal w-[min(380px,92vw)] rounded-2xl p-4" dir="ltr">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-bold">{t("equalizer")}</h3>
         <button onClick={onClose} className="text-white/40 hover:text-white" aria-label="Close EQ">
@@ -79,6 +85,48 @@ export function EqualizerPanel({ onClose }: Props) {
           );
         })}
       </div>
+      {/* bass / pre-amp / balance — real nodes in the audio graph */}
+      <div className="mt-3 grid gap-2 rounded-xl bg-white/[0.03] p-3">
+        <Row label={t("bassBoost")} value={`${bassBoost > 0 ? "+" : ""}${bassBoost} dB`}>
+          <input
+            type="range"
+            min={-12}
+            max={12}
+            step={1}
+            value={bassBoost}
+            onChange={(e) => setBassBoost(Number(e.target.value))}
+            className="w-full accent-[var(--app-accent)]"
+            aria-label={t("bassBoost")}
+          />
+        </Row>
+        <Row label={t("preamp")} value={`${preamp > 0 ? "+" : ""}${preamp} dB`}>
+          <input
+            type="range"
+            min={-12}
+            max={12}
+            step={1}
+            value={preamp}
+            onChange={(e) => setPreamp(Number(e.target.value))}
+            className="w-full accent-[var(--app-accent)]"
+            aria-label={t("preamp")}
+          />
+        </Row>
+        <Row
+          label={t("balance")}
+          value={balance === 0 ? t("center") : `${balance < 0 ? t("left") : t("right")} ${Math.round(Math.abs(balance) * 100)}%`}
+        >
+          <input
+            type="range"
+            min={-100}
+            max={100}
+            step={5}
+            value={Math.round(balance * 100)}
+            onChange={(e) => setBalance(Number(e.target.value) / 100)}
+            className="w-full accent-[var(--app-accent)]"
+            aria-label={t("balance")}
+          />
+        </Row>
+      </div>
       <p className="mt-2 text-center font-mono text-[10px] text-white/30">
         {t("eqSub")}
       </p>
@@ -86,5 +134,23 @@ export function EqualizerPanel({ onClose }: Props) {
         {t("eqNote")}
       </p>
     </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="grid grid-cols-[4.5rem_1fr_4rem] items-center gap-2">
+      <span className="text-[11px] font-semibold text-white/60">{label}</span>
+      {children}
+      <span className="text-end font-mono text-[10px] text-white/45">{value}</span>
+    </label>
   );
 }
