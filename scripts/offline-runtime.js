@@ -46,6 +46,9 @@
     if (noOrigin.indexOf("/api/") !== 0) return null;
     if (SNAPSHOT[noOrigin]) return SNAPSHOT[noOrigin];
     var bare = noOrigin.split("?")[0];
+    // Search/reels responses are query-specific. Never show one baked query's
+    // results as if they belonged to a different offline search.
+    if (bare === "/api/search" || bare === "/api/reels") return null;
     return SNAPSHOT[bare] || null;
   }
 
