@@ -198,8 +198,7 @@ body {
   text-rendering: optimizeLegibility;
   overflow: hidden;
   overscroll-behavior: none;
-  /* The WebView draws under the status/navigation bars on Android. */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Android system-bar insets are applied to the WebView by MainActivity. */
 }
 
 /* Long titles, urls and metadata break instead of pushing the layout wide. */
@@ -500,11 +499,7 @@ input[type="range"].aura-eq::-moz-range-thumb {
   * { scroll-behavior: auto !important; }
 }
 
-/* Android WebView: keep the shell out of the notification bar / gesture area. */
-html[data-host="android"] body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
+/* Android safe-area is applied once at the native WebView boundary. */
 
 /* Crisp text selection + focus rings that stay visible on every theme. */
 :focus-visible {
