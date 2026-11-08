@@ -200,7 +200,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val data: Uri? = intent.data ?: return
+        val data: Uri = intent.data ?: return
         val target = when {
             data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
             data.scheme?.startsWith("content") == true ->

@@ -36,12 +36,10 @@ class PlaybackService : MediaSessionService() {
             )
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
+            .setSeekBackIncrementMs(10_000)
+            .setSeekForwardIncrementMs(10_000)
             .build()
-            .apply {
-                repeatMode = Player.REPEAT_MODE_OFF
-                setSeekBackIncrementMs(10_000)
-                setSeekForwardIncrementMs(10_000)
-            }
+            .apply { repeatMode = Player.REPEAT_MODE_OFF }
 
         val sessionActivity = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),

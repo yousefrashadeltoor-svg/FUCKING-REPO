@@ -81,6 +81,7 @@ jobs:
         run: |
           # Surface the real compiler error as a check annotation: job logs live on
           # blob storage that some environments cannot reach, annotations do not.
+          set -o pipefail
           if ! gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; then
             errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by" /tmp/gradle.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
             echo "::error title=Gradle build failed::$errs"
@@ -98,6 +99,7 @@ jobs:
             echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
             echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
           fi
+          set -o pipefail
           if ! gradle :app:assembleRelease --no-daemon 2>&1 | tee /tmp/gradle-release.log; then
             errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by|Execution failed" /tmp/gradle-release.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
             echo "::error title=Release APK failed::$errs"

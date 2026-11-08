@@ -78,7 +78,6 @@ object NativePlayer {
                 .setArtist(o.optString("artist"))
                 .setAlbumTitle(o.optString("album"))
                 .setArtworkUri(if (artUri.isNotEmpty() && artUri != "null") android.net.Uri.parse(artUri) else null)
-                .setMediaId(o.optString("id"))
                 .build()
             mediaItems += MediaItem.Builder()
                 .setUri(o.optString("uri"))
