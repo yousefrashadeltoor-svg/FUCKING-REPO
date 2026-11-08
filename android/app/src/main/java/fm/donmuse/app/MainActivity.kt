@@ -27,6 +27,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import fm.donmuse.app.bridge.NativeBridge
 import fm.donmuse.app.bridge.NativeEvents
 import fm.donmuse.app.bridge.PendingPermissions
+import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.PlaybackService
 
 /**
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var bridge: NativeBridge
     private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var themeBootstrapInstalled = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -86,6 +88,9 @@ class MainActivity : ComponentActivity() {
         bridge = NativeBridge(this, webView, permissionLauncher, manageStorageLauncher)
         webView.addJavascriptInterface(bridge, "DonMuseNative")
         NativeEvents.attach(this, webView)
+        // Hand the saved theme/accent/density/language to the page before it
+        // paints, so a cold start never flashes the default (wrong) theme.
+        themeBootstrapInstalled = ThemeInjector.install(this, webView)
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -135,6 +140,9 @@ class MainActivity : ComponentActivity() {
                     "document.documentElement.dataset.host='android';",
                     null,
                 )
+                // Fallback for WebViews without document-start scripts: paint the
+                // persisted theme as soon as the page exists.
+                if (!themeBootstrapInstalled) ThemeInjector.push(this@MainActivity, webView)
             }
         }
 

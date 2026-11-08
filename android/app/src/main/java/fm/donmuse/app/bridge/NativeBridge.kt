@@ -19,6 +19,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.ContextCompat
 import fm.donmuse.app.BuildConfig
 import fm.donmuse.app.data.MediaStoreRepository
+import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.NativePlayer
 import fm.donmuse.app.widget.WidgetUpdater
 import org.json.JSONArray
@@ -205,6 +206,11 @@ class NativeBridge(
     @JavascriptInterface
     fun storeSet(key: String, value: String): String {
         prefs.set(key, value)
+        // Theme / accent / density / language changed → restyle the live page and
+        // keep the persisted document in sync with what the UI shows.
+        if (key == "aura-settings") {
+            webView.post { ThemeInjector.push(activity, webView) }
+        }
         return "ok"
     }
 
@@ -310,7 +316,7 @@ class NativeBridge(
     @JavascriptInterface
     fun downloadToMusic(url: String, filename: String, mime: String): String {
         return try {
-            repo.download(activity, url, filename, mime)
+            repo.download(url, filename, mime)
         } catch (e: Exception) {
             JSONObject().put("error", e.message ?: "failed").toString()
         }
