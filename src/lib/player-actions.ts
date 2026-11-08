@@ -11,7 +11,7 @@ import { getEngine } from "@/lib/audio/engine";
 import { externalFallback, policyFor } from "@/lib/playback-policy";
 import { toast } from "sonner";
 import { usePlayerStore, trackKey } from "@/stores/player-store";
-import { playListNow, startTrack, toggleNow, stopAllNow, prevNow, nextNow } from "@/lib/audio/controller";
+import { playListNow, toggleNow, stopAllNow, prevNow, nextNow } from "@/lib/audio/controller";
 import type { TrackDTO } from "@/lib/types";
 
 const MAJORS = new Set(["spotify", "applemusic", "deezer"]);
@@ -70,7 +70,6 @@ export function playTrackNow(
       return;
     }
     store.playQueue(queue, index, opts?.origin);
-    startTrack(queue[index]);
     return;
   }
 
@@ -82,11 +81,9 @@ export function playTrackNow(
     }
     if (trackKey(store.currentTrack) === trackKey(track)) {
       usePlayerStore.setState({ index: existing, isPlaying: true });
-      startTrack(track, { startAt: store.positionSec });
       return;
     }
-    usePlayerStore.setState({ index: existing, currentTrack: store.queue[existing] });
-    startTrack(store.queue[existing]);
+    usePlayerStore.setState({ index: existing, currentTrack: store.queue[existing], isPlaying: true, positionSec: 0, durationSec: 0, error: null });
     return;
   }
 
@@ -95,19 +92,16 @@ export function playTrackNow(
   // Major platforms: start immediately (preview/proxy), then swap to the
   // full-length YouTube match when the resolver answers.
   if (MAJORS.has(track.source) && !track.isrc?.startsWith("yt:")) {
-    startTrack(track);
     void resolveMajor(track).then((full) => {
       if (full.source !== "youtube") return;
       const s = usePlayerStore.getState();
       if (trackKey(s.currentTrack) !== trackKey(track)) return; // user moved on
       const q = s.queue.map((x) => (trackKey(x) === trackKey(track) ? full : x));
       usePlayerStore.setState({ queue: q, currentTrack: full });
-      startTrack(full, { startAt: s.positionSec });
     });
     return;
   }
 
-  startTrack(track);
 }
 
 export function playQueueNow(queue: TrackDTO[], index: number, origin = "list"): void {
