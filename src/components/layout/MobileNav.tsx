@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Home, Search, HardDrive, BookOpen, Tv, Library, Radio, UserCheck,
-  Clapperboard, Inbox, BarChart3, Sparkles, Youtube, Activity, Settings, UserRound,
+  Clapperboard, Inbox, BarChart3, Sparkles, Video, Activity, Settings, UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -22,7 +22,7 @@ const ITEMS = [
   { href: "/downloads", key: "downloads" as const, icon: Inbox },
   { href: "/stats", key: "statsTitle" as const, icon: BarChart3 },
   { href: "/ai", key: "ai" as const, icon: Sparkles },
-  { href: "https://www.youtube.com", label: "YouTube", icon: Youtube, external: true },
+  { href: "https://www.youtube.com", label: "YouTube", icon: Video, external: true },
   { href: "/youtube-profile", key: "ytProfile" as const, icon: UserCheck },
   { href: "/diagnostics", key: "diagnostics" as const, icon: Activity },
   { href: "/settings", key: "settings" as const, icon: Settings },
