@@ -25,14 +25,14 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -55,10 +55,23 @@ jobs:
           cp -r out android/app/src/main/assets/www
           echo "bundled $(find out -type f | wc -l) files into assets/www"
 
-      - uses: android-actions/setup-android@v3
+      # Install the SDK explicitly: the runner's default image no longer
+      # guarantees a cmdline-tools layout that `setup-android` can extend, and a
+      # silent failure there skips the whole APK build.
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: true
 
       # The repo carries only gradle-wrapper.properties, so the wrapper is
       # generated on CI where Gradle is available (no committed jar needed).
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+          cache-read-only: false
+
       - name: Generate Gradle wrapper
         run: |
           if [ -x ./gradlew ] && [ -f gradle/wrapper/gradle-wrapper.jar ]; then
@@ -86,7 +99,7 @@ jobs:
           fi
           ./gradlew :app:assembleRelease --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: don-muse-apk
           path: |
