@@ -40,6 +40,7 @@ import type { PlaylistDTO } from "@/lib/types";
 import { useT, type DictKey } from "@/lib/i18n";
 import { isNativeHost } from "@/lib/platform/native";
 import { motion } from "framer-motion";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 interface NavItem {
   href: string;
