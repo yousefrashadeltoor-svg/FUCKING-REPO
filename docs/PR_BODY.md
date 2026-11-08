@@ -33,6 +33,7 @@
 
 ### CI
 - Lint/build now **fail** on errors; the APK job bundles a verified web export; the auto-commit patch pipeline is gone.
+- The APK pipeline is repaired: deprecated actions bumped, Android SDK + Gradle 8.7 installed explicitly, and Gradle failures surface as check annotations instead of being swallowed by a `| tee` pipe. `AndroidManifest.xml` was invalid XML (`--` inside comments) and several Kotlin/Media3 errors were fixed, so `assembleDebug` **and** `assembleRelease` now succeed.
 
 ## Verification
 
@@ -43,9 +44,9 @@
 | `next build` | success (all routes, incl. `/stats`) |
 | `node scripts/gh-pages-export.mjs` | 69 files, 3.2 MB |
 | `npm test` (SSRF) | 14/14 passing |
-| Android | compiled in CI (`android-apk.yml`); not run on a physical device here |
+| Android APK | green: debug + release APKs built and uploaded (`don-muse-apk`, 12 MB) |
 
 ## Known limits (deliberately not faked)
 - No `YOUTUBE_API_KEY` → YouTube surfaces show a "not configured" state instead of data.
 - Monthly listeners / related artists: not available from the Data API, so left empty.
-- Android APK has only been verified via CI, not on hardware in this environment.
+- The APK is CI-built and downloadable, but no device/emulator run was possible here.

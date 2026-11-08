@@ -118,9 +118,17 @@ keyless-first fallbacks, link-out for artist-owned platforms).
 | Theme | `ThemeInjector` sets `window.__dmTheme` as a **document-start script** (WebKitX) with a page-finished fallback, and re-themes the live page when settings change — cold start no longer flashes the default theme |
 | Widgets / notifications | `WorkManager` release notifications, home-screen widget refresh on every transport change |
 
-**Fixed this branch:** `MediaStoreRepository.kt` was missing from the tree while
-`NativeBridge` still imported it (the Android build could not compile). It has been
-restored with scoped-permission reads and the real download pipeline.
+**Fixed this branch:** the Android build is repaired end to end and passes CI.
+`MediaStoreRepository.kt` and `ThemeInjector.kt` existed on disk but had never been
+committed, because `.gitignore` carried a bare `data/` (meant for the root PGlite
+folder) which also matched `android/.../app/data/`. Along with that:
+`AndroidManifest.xml` comments contained `--` (invalid XML),
+`MediaMetadata.setMediaId` does not exist, the seek increments were set on the built
+`Player` instead of its builder, `Intent.data` stayed nullable after the elvis,
+`DonMuseApp`/`Context` imports were missing, and a KDoc containing `/api/*` opened a
+nested comment that broke the file. The CI step also ran `gradle … | tee`, so `tee`'s
+exit code masked real failures — it now runs under `pipefail` and prints compiler
+errors as check annotations.
 
 ## 10. Quran, radio, TV, reels, AI
 
@@ -163,7 +171,7 @@ Static export: **69 files · 3.2 MB**, API base empty → the UI explicitly repo
 | `npx next build` | success, all routes incl. `/stats` |
 | `node scripts/gh-pages-export.mjs` | 69 files, 3.2 MB, `/stats` renders 200 |
 | `npm test` | 14/14 SSRF cases pass |
-| Android `assembleDebug` | **CI-only** — not run here |
+| Android `assembleDebug` + `assembleRelease` | **green in CI** — both APKs built and uploaded as the `don-muse-apk` artifact (12 MB) |
 
 ## 14. Known limits (stated, not hidden)
 
@@ -171,8 +179,9 @@ Static export: **69 files · 3.2 MB**, API base empty → the UI explicitly repo
    "not configured" state. The code paths type-check and build.
 2. Monthly listeners, related artists and album tracklists are not available from the
    Data API; they remain empty by design.
-3. Android APK is verified by CI compilation only; no device/emulator run was
-   possible in the sandbox (no SDK/Gradle).
+3. The APK compiles and is produced by CI (`don-muse-apk`, debug + release), but no
+   device/emulator run was possible in the sandbox, so runtime behaviour on hardware
+   is unverified.
 4. Deezer, SoundCloud and Bandcamp are metadata/link-out sources, not playback
    sources for us.
 5. `MANAGE_EXTERNAL_STORAGE` remains declared for the optional full-metadata path;
