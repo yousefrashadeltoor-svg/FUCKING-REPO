@@ -21,6 +21,8 @@ jobs:
       # Warnings are tolerated for now, errors never are (the old `|| true` hid both).
       - name: Lint (errors fail the build)
         run: npm run lint -- --max-warnings=200
+      - name: Tests
+        run: npm test
       - name: Build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
