@@ -8,6 +8,7 @@
 // ============================================================================
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   AlertCircle,
   BadgeCheck,
@@ -58,6 +59,9 @@ interface MePayload {
   playlists?: { id: string; title: string; count: number; thumb: string | null; url: string }[];
   feed?: VideoDto[];
   liked?: VideoDto[];
+  subscriptionsNextPage?: string | null;
+  scopes?: string;
+  manageUrl?: string;
   errors?: string[];
 }
 
@@ -115,6 +119,9 @@ function Inner() {
     if (status === "denied") toast.error("Google: access not granted");
     if (status === "failed" || status === "invalid-state") toast.error("Google sign-in failed");
     if (status === "not-configured") toast.error(t("ytNotConfigured"));
+    if (status === "no-token-key") toast.error(t("tokenKeyMissing"));
+    if (status === "storage-failed") toast.error(t("ytStorageFailed"));
+    if (status === "no-session") toast.error(t("ytSessionFailed"));
   }, [status, t]);
 
   const disconnect = async () => {
@@ -157,7 +164,9 @@ function Inner() {
 GOOGLE_CLIENT_SECRET=…
 GOOGLE_REDIRECT_URI=https://your-domain/api/youtube/callback
 # optional (unauthenticated search)
-YOUTUBE_API_KEY=…`}
+YOUTUBE_API_KEY=…
+# required to store the account tokens (AES-256-GCM) — generate once, keep secret
+GOOGLE_TOKEN_KEY=$(openssl rand -hex 32)`}
               </pre>
               <p className="mt-2">
                 Authorised redirect URI in Google Cloud Console:{" "}
@@ -191,7 +200,10 @@ YOUTUBE_API_KEY=…`}
               <GoogleMark /> {t("ytConnect")}
             </a>
             <span className="text-[11px] text-[color:var(--app-muted)]">
-              Scopes: youtube.readonly · email · profile — revocable any time from your Google account.
+              Scopes: youtube · youtube.force-ssl · youtube.upload · email · profile — revocable any time from {" "}
+              <a className="underline" href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">
+                your Google account
+              </a>.
             </span>
           </div>
           {data?.reason && <p className="text-[11.5px] text-rose-300">{data.reason}</p>}
@@ -298,6 +310,12 @@ YOUTUBE_API_KEY=…`}
         <VideoGrid items={data.liked ?? []} />
       </Section>
 
+      {/* own YouTube watch history (separate from in-app listening history) */}
+      <YouTubeHistorySection />
+
+      {/* upload */}
+      <YouTubeUploadSection connected={data.connected} />
+
       {/* playlists */}
       <Section title={t("ytPlaylists")} icon={<Bell className="size-4 text-sky-400" />} count={data.playlists?.length ?? 0}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -339,13 +357,25 @@ function Stat({ label, value, icon }: { label: string; value: string; icon: Reac
   );
 }
 
-function Section({ title, icon, count, children }: { title: string; icon: React.ReactNode; count: number; children: React.ReactNode }) {
-  if (count === 0 && title.length === 0) return null;
+function Section({
+  title,
+  icon,
+  count,
+  children,
+  action,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  count?: number;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <section className="mt-6">
       <h3 className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.2em] text-[color:var(--app-muted)]">
         {icon} {title}
-        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black">{count}</span>
+        {count !== undefined && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black">{count}</span>}
+        {action && <span className="ms-auto normal-case tracking-normal">{action}</span>}
       </h3>
       {children}
     </section>
@@ -357,11 +387,9 @@ function VideoGrid({ items }: { items: VideoDto[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {items.map((v) => (
-        <a
+        <Link
           key={v.videoId}
-          href={v.url}
-          target="_blank"
-          rel="noreferrer"
+          href={`/watch?v=${v.videoId}`}
           className="group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] transition hover:border-white/25"
         >
           <div className="relative aspect-video w-full overflow-hidden bg-white/5">
@@ -382,7 +410,7 @@ function VideoGrid({ items }: { items: VideoDto[] }) {
               </p>
             )}
           </div>
-        </a>
+        </Link>
       ))}
     </div>
   );
@@ -419,3 +447,242 @@ function fmtDur(sec: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
 }
 
+
+/* -------------------------------------------------------------------------- */
+/*  YouTube watch history — our own records, kept apart from in-app history.   */
+/* -------------------------------------------------------------------------- */
+
+interface WatchEntry {
+  videoId: string;
+  title: string;
+  channel: string | null;
+  thumb: string | null;
+  durationSec: number;
+  positionSec: number;
+  completed: boolean;
+  watchedAt: string;
+}
+
+function YouTubeHistorySection() {
+  const t = useT();
+  const [items, setItems] = useState<WatchEntry[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/youtube/history", { cache: "no-store" }).catch(() => null);
+    const body = (await res?.json().catch(() => ({}))) as { items?: WatchEntry[] };
+    setItems(body.items ?? []);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const clear = async () => {
+    setBusy(true);
+    try {
+      await fetch("/api/youtube/history?id=all", { method: "DELETE" });
+      setItems([]);
+      toast.success(t("ytHistoryCleared"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (videoId: string) => {
+    await fetch(`/api/youtube/history?id=${encodeURIComponent(videoId)}`, { method: "DELETE" });
+    setItems((prev) => prev.filter((v) => v.videoId !== videoId));
+  };
+
+  return (
+    <Section
+      title={t("ytWatchHistory")}
+      icon={<History className="size-4 text-emerald-400" />}
+      count={items.length}
+      action={
+        items.length > 0 ? (
+          <button
+            onClick={() => void clear()}
+            disabled={busy}
+            className="rounded-full border border-white/12 px-3 py-1 text-[11px] font-semibold text-[color:var(--app-muted)] hover:text-white disabled:opacity-50"
+          >
+            {t("clearHistory")}
+          </button>
+        ) : null
+      }
+    >
+      {items.length === 0 ? (
+        <Empty text={t("ytWatchHistoryEmpty")} />
+      ) : (
+        <div className="grid gap-2">
+          {items.slice(0, 24).map((v) => {
+            const pct = v.durationSec > 0 ? Math.min(100, Math.round((v.positionSec / v.durationSec) * 100)) : 0;
+            return (
+              <div key={v.videoId} className="flex items-center gap-3 rounded-xl bg-white/[0.04] p-2">
+                <Link href={`/watch?v=${v.videoId}`} className="relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-white/10">
+                  {v.thumb && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={v.thumb} alt="" className="size-full object-cover" />
+                  )}
+                  {pct > 0 && <span className="absolute inset-x-0 bottom-0 h-1 bg-red-500" style={{ width: `${pct}%` }} />}
+                </Link>
+                <div className="min-w-0 flex-1">
+                  <Link href={`/watch?v=${v.videoId}`} className="line-clamp-1 text-[12.5px] font-bold hover:underline">
+                    {v.title}
+                  </Link>
+                  <p className="truncate text-[11px] text-[color:var(--app-muted)]">
+                    {v.channel ?? ""} · {new Date(v.watchedAt).toLocaleDateString()}
+                    {v.completed ? ` · ${t("watched")}` : pct > 0 ? ` · ${pct}%` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={() => void remove(v.videoId)}
+                  className="rounded-full px-2 py-1 text-[11px] text-[color:var(--app-muted)] hover:bg-white/10 hover:text-white"
+                  aria-label={t("clearHistory")}
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Upload a video the user owns — official resumable upload, real progress.   */
+/* -------------------------------------------------------------------------- */
+
+function YouTubeUploadSection({ connected }: { connected: boolean }) {
+  const t = useT();
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [privacy, setPrivacy] = useState<"public" | "unlisted" | "private">("private");
+  const [progress, setProgress] = useState<number | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = async () => {
+    if (!file) return;
+    setError(null);
+    setResult(null);
+    setProgress(0);
+    try {
+      // 1. open the resumable session server-side (token never leaves the server)
+      const startRes = await fetch("/api/yt/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title || file.name.replace(/\.[^.]+$/, ""),
+          privacy,
+          size: file.size,
+        }),
+      });
+      const start = (await startRes.json().catch(() => ({}))) as { ok?: boolean; uploadId?: string; error?: string };
+      if (!startRes.ok || !start.ok || !start.uploadId) {
+        setError(start.error ?? `HTTP ${startRes.status}`);
+        setProgress(null);
+        return;
+      }
+
+      // 2. stream the bytes through our own route with real progress events
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", `/api/yt/upload?uploadId=${encodeURIComponent(start.uploadId!)}`);
+        xhr.setRequestHeader("Content-Type", file.type || "video/*");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const body = JSON.parse(xhr.responseText) as { ok?: boolean; url?: string; error?: string; note?: string };
+              if (body.ok) {
+                setResult(body.url ?? null);
+                toast.success(t("uploadDone"), { description: body.note });
+              } else {
+                setError(body.error ?? "Upload failed");
+              }
+              resolve();
+            } catch {
+              reject(new Error("Bad response"));
+            }
+          } else {
+            try {
+              const body = JSON.parse(xhr.responseText) as { error?: string };
+              setError(body.error ?? `HTTP ${xhr.status}`);
+            } catch {
+              setError(`HTTP ${xhr.status}`);
+            }
+            resolve();
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.send(file);
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setProgress((p) => (p === 100 ? 100 : null));
+    }
+  };
+
+  return (
+    <Section title={t("uploadVideo")} icon={<ExternalLink className="size-4 text-sky-400" />} count={0}>
+      {!connected ? (
+        <Empty text={t("connectYouTubeFirst")} />
+      ) : (
+        <div className="grid gap-2.5 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <input
+            type="file"
+            accept="video/*"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setFile(f);
+              if (f && !title) setTitle(f.name.replace(/\.[^.]+$/, ""));
+            }}
+            className="text-[12px] file:me-3 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-[11px] file:font-semibold file:text-white"
+          />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={t("uploadTitle")}
+            className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[13px] outline-none focus:border-white/25"
+          />
+          <div className="flex items-center gap-2">
+            <select
+              value={privacy}
+              onChange={(e) => setPrivacy(e.target.value as typeof privacy)}
+              className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[12px] outline-none"
+            >
+              <option value="private">{t("uploadPrivate")}</option>
+              <option value="unlisted">{t("uploadUnlisted")}</option>
+              <option value="public">{t("uploadPublic")}</option>
+            </select>
+            <button
+              onClick={() => void upload()}
+              disabled={!file || progress !== null}
+              className="rounded-full bg-[var(--app-accent)] px-4 py-2 text-[12px] font-bold text-black disabled:opacity-40"
+            >
+              {progress === null ? t("uploadStart") : `${t("uploadProgress")} ${progress}%`}
+            </button>
+          </div>
+          {progress !== null && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full bg-[var(--app-accent)] transition-[width]" style={{ width: `${progress}%` }} />
+            </div>
+          )}
+          <p className="text-[10.5px] text-[color:var(--app-muted)]">{t("uploadNote")}</p>
+          {result && (
+            <a href={result} target="_blank" rel="noreferrer" className="text-[12px] font-semibold underline">
+              {result}
+            </a>
+          )}
+          {error && <p className="text-[11.5px] text-rose-300">{error}</p>}
+        </div>
+      )}
+    </Section>
+  );
+}

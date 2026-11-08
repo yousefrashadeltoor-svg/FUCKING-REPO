@@ -196,7 +196,7 @@ const en = {
   providersTitle: "Content sources", providerStatus: "Status", providerLicense: "Licence", providerWhy: "Why this source",
   providersSelfHosted: "Self-hostable", providersBackoff: "retrying in", providersUnconfigured: "Needs configuration",
   playbackPolicy: "Playback policy", policyEmbed: "Official player only", policyDirect: "Direct stream", policyLink: "Opens the source",
-  hidden: "Hidden", results: "results",
+  hidden: "Hidden", results: "results", ytWatchHistory: "YouTube watch history", ytWatchHistoryEmpty: "Nothing watched yet — play a YouTube video and it appears here.", ytHistoryCleared: "YouTube history cleared", clearHistory: "Clear", watched: "watched", ytStorageFailed: "Could not store the account securely — check GOOGLE_TOKEN_KEY.", ytSessionFailed: "Session could not be created — reload and try again.",
 } as const;
 
 export type DictKey = keyof typeof en;
@@ -365,7 +365,7 @@ const ar: Dict = {
   providerStatus: "الحالة", providerLicense: "الترخيص", providerWhy: "سبب الاختيار",
   providersSelfHosted: "قابل للاستضافة الذاتية", providersBackoff: "إعادة المحاولة بعد", providersUnconfigured: "يحتاج إعدادًا",
   playbackPolicy: "سياسة التشغيل", policyEmbed: "المشغّل الرسمي فقط", policyDirect: "بث مباشر",
-  policyLink: "يفتح المصدر", hidden: "مخفي", results: "نتيجة",
+  policyLink: "يفتح المصدر", hidden: "مخفي", results: "نتيجة", ytWatchHistory: "سجل مشاهدة يوتيوب", ytWatchHistoryEmpty: "لا شيء بعد — شغّل فيديو من يوتيوب وسيظهر هنا.", ytHistoryCleared: "تم مسح سجل يوتيوب", clearHistory: "مسح", watched: "تمت المشاهدة", ytStorageFailed: "تعذّر تخزين الحساب بأمان — تحقق من GOOGLE_TOKEN_KEY.", ytSessionFailed: "تعذّر إنشاء الجلسة — أعد التحميل وحاول مجددًا.",
 };
 
 const fr: DictPatch = {
