@@ -74,8 +74,11 @@ jobs:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0"
           log-accepted-android-sdk-licenses: true
 
+      # Pin the Gradle *distribution*: the runner's default can be newer than
+      # AGP 8.5.2 supports, and `gradle wrapper` then fails on the settings script.
       - uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: "8.7"
           cache-read-only: false
 
       - name: Download the web export
@@ -116,7 +119,11 @@ jobs:
             echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
             echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
           fi
-          ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
+          if ! ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log; then
+            errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by|Execution failed" /tmp/gradle.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
+            echo "::error title=APK build failed::$errs"
+            exit 1
+          fi
 
       - name: Upload APKs
         uses: actions/upload-artifact@v5
