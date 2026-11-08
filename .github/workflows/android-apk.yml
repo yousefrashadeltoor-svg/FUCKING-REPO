@@ -46,13 +46,18 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run build
-          node scripts/gh-pages-export.mjs
-          test -d out || { echo "::error::Static export produced no out/ directory"; exit 1; }
-          test -f out/index.html || { echo "::error::out/index.html is missing — the APK would ship an empty UI"; exit 1; }
+          # Full offline bundle: every route rendered, every asset captured, and
+          # the read-only API answers snapshotted so the app has real content
+          # with no connection at all.
+          node scripts/offline-bundle.mjs
+          test -f out-offline/index.html || { echo "::error::Offline bundle missing index.html"; exit 1; }
+          test -f out-offline/radio/index.html || { echo "::error::Offline bundle is missing routes"; exit 1; }
+          test -d out-offline/api-snapshot || { echo "::error::Offline bundle has no api snapshots"; exit 1; }
+          test -f out-offline/_next/static/chunks/*.css || { echo "::error::Offline bundle has no CSS — the UI would render unstyled"; exit 1; }
           mkdir -p android/app/src/main/assets
           rm -rf android/app/src/main/assets/www
-          cp -r out android/app/src/main/assets/www
-          echo "bundled $(find out -type f | wc -l) files into assets/www"
+          cp -r out-offline android/app/src/main/assets/www
+          echo "bundled $(find android/app/src/main/assets/www -type f | wc -l) files into assets/www"
 
       # Install the SDK explicitly: the runner's default image no longer
       # guarantees a cmdline-tools layout that `setup-android` can extend, and a

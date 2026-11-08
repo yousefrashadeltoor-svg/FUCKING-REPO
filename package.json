@@ -12,7 +12,8 @@
     "seed": "node scripts/seed.mjs",
     "db:push": "drizzle-kit push",
     "export:pages": "node scripts/gh-pages-export.mjs",
-    "build:pages": "npm run build && node scripts/gh-pages-export.mjs"
+    "build:pages": "npm run build && node scripts/gh-pages-export.mjs",
+    "export:offline": "npm run build && node scripts/offline-bundle.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",

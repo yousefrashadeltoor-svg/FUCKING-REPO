@@ -11,6 +11,7 @@ import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -27,6 +28,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import fm.donmuse.app.bridge.NativeBridge
 import fm.donmuse.app.bridge.NativeEvents
 import fm.donmuse.app.bridge.PendingPermissions
+import fm.donmuse.app.data.OfflineWeb
 import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.PlaybackService
 
@@ -120,6 +122,27 @@ class MainActivity : ComponentActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            /**
+             * The bundled UI is served by OfflineWeb (a real https origin backed
+             * by assets/www): correct MIME types, one shared origin, no network.
+             */
+            override fun shouldInterceptRequest(
+                view: WebView,
+                request: WebResourceRequest,
+            ): WebResourceResponse? {
+                val url = request.url
+                if (!OfflineWeb.isOurs(url)) return null
+                if (!hasBundledUi()) {
+                    // No bundle in this build: let the hosted site answer.
+                    return null
+                }
+                return OfflineWeb.resolve(
+                    this@MainActivity,
+                    OfflineWeb.pathOf(url),
+                    isNavigation = request.isForMainFrame,
+                )
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val host = url.host ?: return false
@@ -164,7 +187,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isInternalHost(host: String): Boolean =
-        host == DonMuseApp.WEB_HOST || host.endsWith(".donmuse.app") || host == "localhost"
+        host == DonMuseApp.WEB_HOST ||
+            host.endsWith(".donmuse.app") ||
+            host == "localhost" ||
+            host == "appassets.androidplatform.net"
+
+    /** True when this APK actually carries the static UI bundle. */
+    private fun hasBundledUi(): Boolean = DonMuseApp.hasBundledUi(this)
 
     private fun firstUrl(intent: Intent?): String {
         // `intent?.data` is already a smart-cast Uri?: keep the null check local so

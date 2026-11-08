@@ -47,14 +47,18 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/gh-pages-export.mjs
+          node scripts/offline-bundle.mjs
           test -f out/index.html || { echo "::error::out/index.html missing"; exit 1; }
-          echo "exported $(find out -type f | wc -l) files"
+          test -f out-offline/index.html || { echo "::error::offline bundle missing"; exit 1; }
+          echo "exported $(find out -type f | wc -l) files · offline $(find out-offline -type f | wc -l) files"
 
       - name: Upload static export
         uses: actions/upload-artifact@v5
         with:
           name: don-muse-web-export
-          path: out
+          path: |
+            out
+            out-offline
           retention-days: 7
 
   apk:
@@ -85,15 +89,15 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           name: don-muse-web-export
-          path: out
+          path: .
 
       - name: Bundle the web UI into the APK assets
         run: |
           set -euo pipefail
-          test -f out/index.html || { echo "::error::Web export missing"; exit 1; }
+          test -f out-offline/index.html || { echo "::error::Offline bundle missing"; exit 1; }
           mkdir -p android/app/src/main/assets
           rm -rf android/app/src/main/assets/www
-          cp -r out android/app/src/main/assets/www
+          cp -r out-offline android/app/src/main/assets/www
           echo "bundled $(find android/app/src/main/assets/www -type f | wc -l) files"
 
       # setup-gradle already put Gradle 8.7 on PATH, so no wrapper jar has to be

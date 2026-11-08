@@ -180,6 +180,16 @@ html {
 }
 [data-theme="daylight"] { color-scheme: light; }
 
+html,
+body {
+  /* A phone must never have to be scrolled sideways: the app fits the viewport
+     in every orientation and at every zoom level. */
+  max-width: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   background: var(--app-bg);
   color: var(--app-text);
@@ -188,6 +198,19 @@ body {
   text-rendering: optimizeLegibility;
   overflow: hidden;
   overscroll-behavior: none;
+  /* The WebView draws under the status/navigation bars on Android. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Long titles, urls and metadata break instead of pushing the layout wide. */
+* {
+  min-width: 0;
+}
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
 }
 
 /* Text that must always stay readable regardless of theme. */

@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import fm.donmuse.app.data.OfflineWeb
 import androidx.core.app.NotificationCompat
 import android.os.Build
 import androidx.work.Constraints
@@ -79,20 +80,27 @@ class DonMuseApp : Application() {
             true
         }.getOrDefault(false)
 
+        /**
+         * Where the UI opens.
+         *
+         * The bundled build is served through a real origin
+         * (OfflineWeb.ORIGIN, backed by assets/www) rather than file:// —
+         * file:// pages get no shared origin in a WebView, which is what made
+         * images, styles and in-app links fail. See data/OfflineWeb.kt.
+         */
         fun startUrl(ctx: Context): String =
-            if (hasBundledUi(ctx)) "file:///android_asset/www/index.html"
+            if (hasBundledUi(ctx)) OfflineWeb.url("/")
             else "https://$WEB_HOST"
 
         /**
          * Deep link → concrete URL for either host.
-         * Bundled UI ships one index.html per route, so a path maps to
-         * `www/<route>/index.html`; the hosted build takes the normal path.
+         * The bundled build keeps normal web paths (`/radio`), which the asset
+         * router maps onto `www/radio/index.html`.
          */
         fun routeUrl(ctx: Context, path: String): String {
             val clean = path.trim('/').split('?').first().split('#').first()
             if (hasBundledUi(ctx)) {
-                return if (clean.isEmpty()) startUrl(ctx)
-                else "file:///android_asset/www/$clean/index.html"
+                return if (clean.isEmpty()) OfflineWeb.url("/") else OfflineWeb.url("/$clean")
             }
             return if (clean.isEmpty()) startUrl(ctx) else "https://$WEB_HOST/$clean"
         }

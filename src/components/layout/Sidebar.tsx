@@ -150,7 +150,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "glass-panel z-20 hidden shrink-0 flex-col gap-1 rounded-2xl md:flex",
-        collapsed ? "w-[64px] items-center p-2" : "w-[212px] p-3",
+        collapsed ? "w-[64px] items-center p-2" : "w-[212px] p-3 max-[900px]:w-[168px]",
       )}
     >
       <Link href="/" className={cn("mb-1 flex items-center gap-2.5", collapsed ? "justify-center" : "px-1 py-1.5")}>

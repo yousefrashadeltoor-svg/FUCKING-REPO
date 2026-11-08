@@ -26,7 +26,7 @@ export function EqualizerPanel({ onClose }: Props) {
   const setBalance = usePlayerStore((s) => s.setBalance);
 
   return (
-    <div className="glass-modal w-[380px] rounded-2xl p-4" dir="ltr">
+    <div className="glass-modal w-[min(380px,92vw)] rounded-2xl p-4" dir="ltr">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-bold">{t("equalizer")}</h3>
         <button onClick={onClose} className="text-white/40 hover:text-white" aria-label="Close EQ">
