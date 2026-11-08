@@ -279,6 +279,7 @@ export const nativePlayback = {
       durationSec: number;
       streamUrl: string;
       source: string;
+      sourceId?: string | null;
     },
     opts: { autoplay?: boolean; startAt?: number; uri?: string; queue?: NativeQueueItem[] } = {},
   ): void {
