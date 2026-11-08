@@ -4,7 +4,9 @@ import { safeFetch } from "@/lib/server/ssrf";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 3600;
+// Vercel Hobby Fluid Compute caps a single response at 300 seconds.
+// Clients should reconnect the live station when this bounded response ends.
+export const maxDuration = 300;
 
 // ---------------------------------------------------------------------------
 //  GET /api/radio/stream?u=<encoded upstream url>&id=<station uuid>
