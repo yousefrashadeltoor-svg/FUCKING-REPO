@@ -14,6 +14,7 @@ import { nativeDiagnostics, isNativeHost, platformName } from "@/lib/platform/na
 import { usePlayerStore } from "@/stores/player-store";
 import { useNetworkStore } from "@/stores/network-store";
 import { toast } from "sonner";
+import { ProviderPanel } from "@/components/settings/ProviderPanel";
 
 interface HealthPayload {
   ok: boolean;
@@ -236,6 +237,8 @@ export default function DiagnosticsPage() {
           </div>
         )}
       </div>
+      {/* content sources: live provider health + playback policy */}
+      <ProviderPanel />
     </div>
   );
 }

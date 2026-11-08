@@ -149,7 +149,9 @@ export const RECITERS: Reciter[] = [
     [{ source: "everyayah", dir: "Minshawy_Mujawwad_192kbps", bitrate: 192 }, { source: "quranicaudio", qaAlbum: "minshawymujawwad", bitrate: 192 }]),
   R("rifai", "هاني الرفاعي", "Hani Ar-Rifai", "EG", "مصر", "مرتّل",
     [mp3q("rifai"), { source: "everyayah", dir: "Hani_Rifai_192kbps", bitrate: 192 }]),
-  R("muaiqly-eg", "محمد رفعت", "Sheikh Mohamed Refaat", "EG", "مصر", "مرتّل",
+  // NOTE: the id is historical (kept so saved links keep working) — the label and
+  // the served recitation are both Mohamed Refaat.
+  R("refaat", "محمد رفعت", "Sheikh Mohamed Refaat", "EG", "مصر", "مرتّل",
     [{ source: "islamicnetwork", inPath: "refaat/{s}.mp3", bitrate: 128 }, { source: "everyayah", dir: "Mohammad_Refaat_128kbps", bitrate: 128 }]),
   R("shahat", "محمد محمود الشحات", "Mohamed El-Shahat", "EG", "مصر", "مرتّل", [mp3q("shahat", 6)]),
   R("tablawi", "محمد محمود الطبلاوي", "Mohamed Al-Tablawi", "EG", "مصر", "مرتّل", [mp3q("tablawi", 6)]),
@@ -226,8 +228,14 @@ export function getSurah(n: number): Surah | null {
   return SURAHS.find((s) => s.n === n) ?? null;
 }
 
+/** Legacy ids that were renamed — kept so old saved links still resolve. */
+const RECITER_ALIASES: Record<string, string> = {
+  "muaiqly-eg": "refaat", // historical id that always served Mohamed Refaat
+};
+
 export function reciterByCode(code: string): Reciter | null {
-  return RECITERS.find((r) => r.code === code) ?? null;
+  const resolved = RECITER_ALIASES[code] ?? code;
+  return RECITERS.find((r) => r.code === resolved) ?? null;
 }
 
 /** Direct URL for a given reciter source. */
