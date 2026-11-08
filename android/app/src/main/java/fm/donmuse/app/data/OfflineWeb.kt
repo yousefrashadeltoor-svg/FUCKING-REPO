@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceResponse
+import fm.donmuse.app.BuildConfig
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
@@ -18,7 +19,7 @@ import java.io.InputStream
  * app's absolute asset URLs, its stored settings and its in-app links all break
  * (that is what produced blank pages and "broken image" icons). Chrome's
  * `WebViewAssetLoader` gives the same files a stable origin
- * (`https://appassets.androidplatform.net/`) with correct MIME types, so the
+ * (`the configured app host`) with correct MIME types, so the
  * exact web UI runs inside the APK with no network at all.
  *
  * Route mapping, because a static export writes `route/index.html`:
@@ -29,13 +30,22 @@ import java.io.InputStream
  */
 object OfflineWeb {
 
-    const val ORIGIN = "https://appassets.androidplatform.net"
+    private val HOST: String = BuildConfig.WEB_HOST.trim()
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .substringBefore('/')
+        .trimEnd('/')
+        .ifBlank { "donmuse.pages.dev" }
+    private val ORIGIN: String = "https://$HOST"
     private const val TAG = "DonMuseOffline"
 
     fun url(path: String = "/"): String = ORIGIN + if (path.startsWith("/")) path else "/$path"
 
-    /** True when `uri` belongs to the bundled UI origin. */
-    fun isOurs(uri: Uri?): Boolean = uri?.host == "appassets.androidplatform.net"
+    /** True when a request belongs to the configured live host. */
+    fun isOurs(uri: Uri?): Boolean = uri?.host == HOST
+
+    /** API requests must reach the server, while UI assets stay local. */
+    fun isApiPath(uri: Uri?): Boolean = uri?.path?.startsWith("/api/") == true
 
     /** The route path of an app URL (`/radio?x=1` → `/radio`). */
     fun pathOf(uri: Uri?): String = uri?.path.orEmpty().ifEmpty { "/" }
