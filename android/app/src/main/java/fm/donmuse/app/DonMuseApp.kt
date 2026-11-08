@@ -63,6 +63,13 @@ class DonMuseApp : Application() {
         val WEB_HOST: String = BuildConfig.WEB_HOST
 
         /**
+         * Origin of the *server* that serves `/api/*`. When the UI is bundled the
+         * page itself is a `file://` asset, so background work (release checks)
+         * must still talk to the hosted origin — never to the asset path.
+         */
+        val API_BASE: String = "https://$WEB_HOST"
+
+        /**
          * The UI is loaded from the bundled asset build when present
          * (`app/src/main/assets/www/index.html`), otherwise from the hosted
          * build — so the APK always opens something real.

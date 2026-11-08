@@ -2,6 +2,7 @@ package fm.donmuse.app.bridge
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.RingtoneManager
@@ -18,6 +19,7 @@ import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.ContextCompat
 import fm.donmuse.app.BuildConfig
+import fm.donmuse.app.DonMuseApp
 import fm.donmuse.app.data.MediaStoreRepository
 import fm.donmuse.app.data.ThemeInjector
 import fm.donmuse.app.playback.NativePlayer
@@ -114,8 +116,10 @@ class NativeBridge(
     }
 
     fun onPermissionsResult(granted: List<String>, denied: List<String>) {
-        val g = JSONArray().apply { granted.forEach { add(it) } }
-        val d = JSONArray().apply { denied.forEach { add(it) } }
+        val g = JSONArray()
+        granted.forEach { g.put(it) }
+        val d = JSONArray()
+        denied.forEach { d.put(it) }
         emit("__donmusePermissions", JSONObject().put("granted", g).put("denied", d).toString())
         if (denied.isNotEmpty() && denied.any { it == Manifest.permission.READ_MEDIA_AUDIO || it == Manifest.permission.READ_EXTERNAL_STORAGE }) {
             toast("امنح صلاحية الوسائط لعرض مكتبتك · Grant media access to browse your library")
