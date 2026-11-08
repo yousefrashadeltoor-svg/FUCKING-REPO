@@ -110,7 +110,9 @@ jobs:
       - name: Build debug APK
         working-directory: android
         env:
-          DONMUSE_WEB_HOST: ${{ vars.DONMUSE_WEB_HOST }}
+          # Prefer the dedicated app host, then reuse the API origin already
+          # configured for the static web export.
+          DONMUSE_WEB_HOST: ${{ vars.DONMUSE_WEB_HOST || vars.NEXT_PUBLIC_API_BASE }}
         run: |
           # Surface the real compiler error as a check annotation: job logs live on
           # blob storage that some environments cannot reach, annotations do not.
