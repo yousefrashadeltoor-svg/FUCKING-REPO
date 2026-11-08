@@ -157,7 +157,8 @@ export async function requestMediaPermissionsAsync(
 ): Promise<boolean> {
   const b = bridge();
   if (!b || typeof window === "undefined") return false;
-  if (kinds.every((kind) => hasMediaPermission(kind))) return true;
+  const required = kinds.filter((kind) => kind !== "notifications");
+  if (required.every((kind) => hasMediaPermission(kind))) return true;
 
   return new Promise<boolean>((resolve) => {
     const registry = (window.donmuseNative ??= {});
@@ -171,7 +172,7 @@ export async function requestMediaPermissionsAsync(
       else delete registry.__donmusePermissions;
       resolve(granted);
     };
-    const timeout = window.setTimeout(() => finish(kinds.every((kind) => hasMediaPermission(kind))), 120_000);
+    const timeout = window.setTimeout(() => finish(required.every((kind) => hasMediaPermission(kind))), 120_000);
     registry.__donmusePermissions = (raw) => {
       // NativeEvents sends a JSON string after Android closes the dialog.
       try {
@@ -179,9 +180,9 @@ export async function requestMediaPermissionsAsync(
           typeof raw === "string" ? raw : JSON.stringify(raw),
           {},
         );
-        finish((result.denied?.length ?? 0) === 0 && kinds.every((kind) => hasMediaPermission(kind)));
+        finish(required.every((kind) => hasMediaPermission(kind)));
       } catch {
-        finish(kinds.every((kind) => hasMediaPermission(kind)));
+        finish(required.every((kind) => hasMediaPermission(kind)));
       }
     };
     try {
