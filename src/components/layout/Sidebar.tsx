@@ -31,7 +31,7 @@ import {
   Activity,
   BarChart3,
   MoreHorizontal,
-  Youtube,
+  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -63,7 +63,7 @@ const PRIMARY: NavItem[] = [
   { href: "/downloads", key: "downloads", icon: Inbox, tone: "text-lime-300" },
   { href: "/stats", key: "statsTitle", icon: BarChart3, tone: "text-teal-300" },
   { href: "/ai", key: "ai", icon: Sparkles, tone: "text-fuchsia-300" },
-  { href: "https://www.youtube.com", key: "ytProfile", label: "YouTube", icon: Youtube, tone: "text-red-400", external: true },
+  { href: "https://www.youtube.com", key: "ytProfile", label: "YouTube", icon: Video, tone: "text-red-400", external: true },
 ];
 
 const SECONDARY: NavItem[] = [
