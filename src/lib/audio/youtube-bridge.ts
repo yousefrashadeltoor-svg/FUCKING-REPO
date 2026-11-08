@@ -37,6 +37,7 @@ export class YouTubeBridge {
     const create = () => {
       if (this.player || !window.YT) return;
       const div = document.createElement("div");
+      div.id = "dm-yt-host";
       div.style.cssText =
         "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;";
       div.setAttribute("aria-hidden", "true");
@@ -181,5 +182,32 @@ export class YouTubeBridge {
 
   get loadedVideoId(): string | null {
     return this.videoId;
+  }
+
+  /**
+   * The ONE visible element that must be shown when YouTube content plays.
+   *
+   * Background audio is not an option for YouTube (official policy for embeds),
+   * and a 1x1 hidden player is the classic way apps hide playback. So we hand
+   * the caller the real player container and let the UI display it full-size in
+   * the video view — the user always sees the official player that is playing.
+   */
+  attachTo(container: HTMLElement | null, size: { width: number; height: number } = { width: 640, height: 360 }): void {
+    const target = container ?? this.hiddenHost();
+    this.run(() => {
+      if (!this.player) return;
+      this.player.setSize(size.width, size.height);
+    });
+    const iframe = this.player?.getIframe?.();
+    if (iframe && target && iframe.parentElement !== target) {
+      iframe.style.cssText = "width:100%;height:100%;border:0;display:block";
+      iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; fullscreen");
+      target.appendChild(iframe);
+    }
+  }
+
+  private hiddenHost(): HTMLElement {
+    this.ensurePlayer();
+    return (this.player?.getIframe?.().parentElement as HTMLElement) ?? document.body;
   }
 }
