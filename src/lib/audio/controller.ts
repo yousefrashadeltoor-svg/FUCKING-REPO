@@ -166,7 +166,7 @@ export function installPlaybackController(): () => void {
     const track = t as TrackDTO | undefined;
     if (track) {
       updateMediaSession("playing");
-      scrobble(track);
+      scrobble(track, true); // new track → reset the listener clock
     }
   });
   const offEnded = engine.on("ended", () => {
@@ -395,16 +395,33 @@ export function installMediaSessionHandlers(): () => void {
 
 const scrobbled = new Set<string>();
 
-function scrobble(track: TrackDTO) {
+/**
+ * Playback history, recorded with REAL listened time.
+ *
+ * The previous build had a second, duplicate scrobbler in Providers that posted
+ * every 60 s forever (even while paused), and this one always reported 0 s — so
+ * "minutes listened" statistics were fiction. Now there is exactly one writer and
+ * it reports the seconds actually played since the last report.
+ */
+let lastReportAt = 0;
+
+function scrobble(track: TrackDTO, reset = false) {
   if (!track || track.id <= 0) return;
   if (track.source === "radio" || track.source === "quran" || track.source === "local") return;
-  const key = `${track.id}:${Math.floor(Date.now() / 60_000)}`;
+  if (reset) lastReportAt = Date.now();
+  const now = Date.now();
+  if (lastReportAt === 0) lastReportAt = now;
+  const elapsed = Math.round((now - lastReportAt) / 1000);
+  if (elapsed < 5) return;
+  const seconds = Math.min(elapsed, 3600);
+  lastReportAt = now;
+  const key = `${track.id}:${Math.floor(now / 60_000)}`;
   if (scrobbled.has(key)) return;
   scrobbled.add(key);
   void fetch("/api/history", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trackId: track.id, durationListenedSec: 0 }),
+    body: JSON.stringify({ trackId: track.id, durationListenedSec: seconds }),
   }).catch(() => {});
 }
 
