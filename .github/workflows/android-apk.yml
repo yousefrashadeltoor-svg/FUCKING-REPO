@@ -142,3 +142,4 @@ jobs:
           files: |
             /tmp/apk-out/don-muse-debug.apk
             /tmp/apk-out/don-muse-release.apk
+          fail_on_unmatched_files: true
