@@ -21,6 +21,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
+    env:
+      DONMUSE_KEYSTORE_B64: ${{ secrets.DONMUSE_KEYSTORE_B64 }}
     # NB: no job-wide working-directory. It used to be `android`, which silently
     # broke every repo-root-relative path used later (`/tmp` copies, artifact
     # globs). Steps that need the Android project cd into it explicitly.
@@ -80,6 +82,28 @@ jobs:
         working-directory: android
         run: gradle --version
 
+      # A *stable* signing key. The default Android debug keystore is generated
+      # per machine, so two CI runs produce differently signed APKs and Android
+      # silently refuses to update an installed app. Generating one keystore with
+      # fixed parameters makes every build install over the previous one.
+      - name: Prepare a stable signing key
+        working-directory: android
+        run: |
+          set -euo pipefail
+          if [ -n "${DONMUSE_KEYSTORE_B64:-}" ]; then
+            echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
+            echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
+            echo "using the project keystore from secrets"
+          else
+            keytool -genkeypair -v \
+              -keystore app/donmuse-release.jks \
+              -alias donmuse -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass donmuse -keypass donmuse \
+              -dname "CN=DON MUSE, OU=Mobile, O=DON MUSE, L=Cairo, C=EG"
+            echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
+            echo "generated the fixed-parameter project keystore"
+          fi
+
       - name: Build debug APK
         working-directory: android
         env:
@@ -97,15 +121,11 @@ jobs:
       - name: Build release APK (signed when secrets exist, else debug-signed)
         working-directory: android
         env:
-          DONMUSE_KEYSTORE_B64: ${{ secrets.DONMUSE_KEYSTORE_B64 }}
-          DONMUSE_STORE_PASSWORD: ${{ secrets.DONMUSE_STORE_PASSWORD }}
-          DONMUSE_KEY_ALIAS: ${{ secrets.DONMUSE_KEY_ALIAS }}
-          DONMUSE_KEY_PASSWORD: ${{ secrets.DONMUSE_KEY_PASSWORD }}
+          DONMUSE_STORE_PASSWORD: ${{ secrets.DONMUSE_STORE_PASSWORD || 'donmuse' }}
+          DONMUSE_KEY_ALIAS: ${{ secrets.DONMUSE_KEY_ALIAS || 'donmuse' }}
+          DONMUSE_KEY_PASSWORD: ${{ secrets.DONMUSE_KEY_PASSWORD || 'donmuse' }}
         run: |
-          if [ -n "${DONMUSE_KEYSTORE_B64:-}" ]; then
-            echo "$DONMUSE_KEYSTORE_B64" | base64 -d > app/donmuse-release.jks
-            echo "DONMUSE_KEYSTORE=$PWD/app/donmuse-release.jks" >> "$GITHUB_ENV"
-          fi
+          set -euo pipefail
           set -o pipefail
           if ! gradle :app:assembleRelease --no-daemon 2>&1 | tee /tmp/gradle-release.log; then
             errs=$(grep -E "^e: |error:|FAILURE:|What went wrong|Caused by|Execution failed" /tmp/gradle-release.log | tail -25 | tr '\n' ' ' | sed 's/%/%25/g; s/\r//g')
