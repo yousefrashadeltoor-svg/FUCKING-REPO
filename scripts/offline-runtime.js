@@ -17,6 +17,17 @@
   var SNAPSHOT = @@DM_SNAPSHOT@@;
   var ROUTES = @@DM_ROUTES@@;
 
+  // Android serves these bundled pages on the same host as the live API.
+  // The bridge reports the real server origin; the HTML/CSS/JS still comes
+  // from packaged assets, while /api requests go to the live backend.
+  try {
+    if (window.DonMuseNative && typeof window.DonMuseNative.platformInfo === "function") {
+      var nativeInfo = JSON.parse(window.DonMuseNative.platformInfo() || "{}");
+      var apiBase = typeof nativeInfo.server === "string" ? nativeInfo.server.replace(/\\/+$/, "") : "";
+      if (/^https?:\\/\\//i.test(apiBase)) window.__DM_API_BASE__ = apiBase;
+    }
+  } catch (e) { /* local UI remains usable without a native bridge */ }
+
   window.__DM_STATIC__ = true;
   window.__DM_OFFLINE__ = true;
   window.__DM_BUILD__ = @@DM_BUILD_ID@@;
@@ -89,17 +100,29 @@
   window.fetch = function (input, init) {
     var url = typeof input === "string" ? input : (input && input.url) || "";
     var method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
-    if (method === "GET") {
-      var file = snapshotFile(url);
-      if (file && origFetch) {
-        return origFetch(ROOT + "api-snapshot/" + file, { cache: "no-store" }).then(function (r) {
-          if (!r.ok) throw new Error("offline snapshot missing: " + file);
-          return r;
-        });
-      }
+    var path = null;
+    try {
+      var parsed = new URL(String(url), window.location.href);
+      if (parsed.pathname.indexOf("/api/") === 0) path = parsed.pathname + parsed.search + parsed.hash;
+    } catch (e) { /* non-URL input */ }
+
+    if (path && origFetch) {
+      // Try the real API first. If the device is offline (or the server is
+      // temporarily unreachable), read-only GETs may fall back to the build
+      // snapshot. Writes are never simulated or replayed from a snapshot.
+      return origFetch(input, init).catch(function (err) {
+        var file = method === "GET" ? snapshotFile(path) : null;
+        if (file) {
+          return origFetch(ROOT + "api-snapshot/" + file, { cache: "no-store" }).then(function (r) {
+            if (!r.ok) throw new Error("offline snapshot missing: " + file);
+            return r;
+          });
+        }
+        window.__DM_OFFLINE_MISSES__.push(String(url));
+        throw err;
+      });
     }
-    // Anything else (writes, live search, uploads) is reported as unavailable
-    // instead of hanging on a request that can never complete without network.
+
     if (String(url).indexOf("/api/") !== -1) {
       window.__DM_OFFLINE_MISSES__.push(String(url));
       return Promise.reject(new Error("offline: " + url));
@@ -107,7 +130,6 @@
     if (!origFetch) return Promise.reject(new Error("offline"));
     return origFetch(input, init);
   };
-
   /* ---------------------------- navigation ------------------------------ */
   window.__DM_ROUTE_HREF__ = routeHref;
   document.addEventListener(
