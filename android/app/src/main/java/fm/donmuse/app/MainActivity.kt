@@ -167,7 +167,10 @@ class MainActivity : ComponentActivity() {
         host == DonMuseApp.WEB_HOST || host.endsWith(".donmuse.app") || host == "localhost"
 
     private fun firstUrl(intent: Intent?): String {
-        val data: Uri? = intent?.data ?: return DonMuseApp.startUrl(this)
+        // `intent?.data` is already a smart-cast Uri?: keep the null check local so
+        // the compiler can narrow it (the old `val data: Uri? = … ?: return`
+        // form left it nullable for every later use).
+        val data: Uri = intent?.data ?: return DonMuseApp.startUrl(this)
         return when {
             data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
             data.scheme?.startsWith("content") == true ->
