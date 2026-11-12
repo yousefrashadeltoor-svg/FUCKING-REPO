@@ -53,6 +53,11 @@ jobs:
           set -o pipefail
           chmod +x gradlew
           ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+      - name: Android lint
+        working-directory: android
+        run: |
+          set -o pipefail
+          ./gradlew :app:lintDebug --no-daemon --stacktrace 2>&1 | tee -a build.log
       - name: Surface compiler diagnostics as annotations
         if: failure() && hashFiles('android/build.log') != ''
         run: |
@@ -60,8 +65,12 @@ jobs:
           from pathlib import Path
           lines = Path('android/build.log').read_text(errors='replace').splitlines()
           selected = [l for l in lines if l.startswith('e:') or 'What went wrong' in l or 'Could not ' in l or 'Execution failed' in l or l.startswith('Caused by:')]
-          for line in selected[-60:]:
-              print('::error title=Gradle build::' + line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
+          def esc(text):
+              return text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          for line in selected[:9]:
+              print('::error title=Gradle build::' + esc(line))
+          if len(selected) > 9:
+              print('::error title=Gradle build - all ' + str(len(selected)) + ' diagnostics::' + esc(chr(10).join(selected)))
           PY
       - name: Upload Gradle log
         if: always()
@@ -70,9 +79,7 @@ jobs:
           name: gradle-build-log
           path: android/build.log
           if-no-files-found: ignore
-      - name: Android lint
-        working-directory: android
-        run: ./gradlew :app:lintDebug --no-daemon --stacktrace
+
       - name: Label artifacts honestly
         run: |
           mkdir -p artifacts

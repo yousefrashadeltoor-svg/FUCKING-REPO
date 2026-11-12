@@ -26,7 +26,9 @@ object Http {
     // second DNS answer cannot redirect OkHttp to a private address (rebinding).
     val client:OkHttpClient=OkHttpClient.Builder().connectTimeout(20,TimeUnit.SECONDS).readTimeout(60,TimeUnit.SECONDS)
         .followRedirects(true).followSslRedirects(true).retryOnConnectionFailure(true)
-        .dns(object:Dns{override fun lookup(hostname:String):List<InetAddress>=publicAddresses(hostname)}).build()
+        .dns(object : Dns{
+            override fun lookup(hostname:String):List<InetAddress> = publicAddresses(hostname)
+        }).build()
     fun validate(url:String):String{
         val u=URI(url);require(u.scheme=="https"||u.scheme=="http"){"الرابط يجب أن يكون HTTP أو HTTPS"}
         require(!u.host.isNullOrBlank()&&u.userInfo==null){"رابط غير صالح"}

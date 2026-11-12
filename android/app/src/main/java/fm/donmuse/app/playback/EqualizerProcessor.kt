@@ -24,17 +24,17 @@ class EqualizerProcessor : AudioProcessor {
     }
     @Volatile private var settings=Settings(DoubleArray(10),48000)
     @Volatile private var desiredGains=DoubleArray(10)
-    private var format=AudioProcessor.NOT_SET
+    private var format=AudioFormat.NOT_SET
     private var output:ByteBuffer=AudioProcessor.EMPTY_BUFFER
     private var ended=false;private var channels=2
     private var activeSettings=settings
     private var states=Array(10){DoubleArray(8)}
     override fun configure(inputAudioFormat:AudioFormat):AudioFormat {
-        if(inputAudioFormat.encoding!=C.ENCODING_PCM_16BIT&&inputAudioFormat.encoding!=C.ENCODING_PCM_FLOAT){format=AudioProcessor.NOT_SET;return AudioProcessor.NOT_SET}
+        if(inputAudioFormat.encoding!=C.ENCODING_PCM_16BIT&&inputAudioFormat.encoding!=C.ENCODING_PCM_FLOAT){format=AudioFormat.NOT_SET;return AudioFormat.NOT_SET}
         format=inputAudioFormat;channels=inputAudioFormat.channelCount;settings=Settings(desiredGains,inputAudioFormat.sampleRate);return inputAudioFormat
     }
-    fun setBands(values:DoubleArray){desiredGains=DoubleArray(10){values.getOrElse(it){0.0}.coerceIn(-12.0,12.0)};if(format!=AudioProcessor.NOT_SET)settings=Settings(desiredGains,format.sampleRate)}
-    override fun isActive()=format!=AudioProcessor.NOT_SET
+    fun setBands(values:DoubleArray){desiredGains=DoubleArray(10){values.getOrElse(it){0.0}.coerceIn(-12.0,12.0)};if(format!=AudioFormat.NOT_SET)settings=Settings(desiredGains,format.sampleRate)}
+    override fun isActive()=format!=AudioFormat.NOT_SET
     override fun queueInput(inputBuffer:ByteBuffer){
         val current=settings;if(current!==activeSettings){activeSettings=current;states=Array(10){DoubleArray(channels*4)}}
         val size=inputBuffer.remaining();if(output.capacity()<size)output=ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder());output.clear()
@@ -56,5 +56,5 @@ class EqualizerProcessor : AudioProcessor {
     override fun getOutput():ByteBuffer{val b=output;output=AudioProcessor.EMPTY_BUFFER;return b}
     override fun isEnded()=ended&&output===AudioProcessor.EMPTY_BUFFER
     override fun flush(){states=Array(10){DoubleArray(channels*4)};output=AudioProcessor.EMPTY_BUFFER;ended=false}
-    override fun reset(){format=AudioProcessor.NOT_SET;flush()}
+    override fun reset(){format=AudioFormat.NOT_SET;flush()}
 }
