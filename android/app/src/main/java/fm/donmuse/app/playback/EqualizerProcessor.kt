@@ -9,7 +9,10 @@ import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
 
+import androidx.media3.common.util.UnstableApi
+
 /** Ten cascaded peaking biquads, matching the UI's Hz bands and ±12 dB range. */
+@androidx.annotation.OptIn(UnstableApi::class)
 class EqualizerProcessor : AudioProcessor {
     private companion object { val frequencies=doubleArrayOf(60.0,170.0,310.0,600.0,1000.0,3000.0,6000.0,12000.0,14000.0,16000.0) }
     private class Settings(val gains:DoubleArray,val sampleRate:Int) {

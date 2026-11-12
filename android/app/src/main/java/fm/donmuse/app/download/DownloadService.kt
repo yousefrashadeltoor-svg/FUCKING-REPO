@@ -17,7 +17,7 @@ import fm.donmuse.app.R
 /** dataSync foreground service keeps large network downloads alive off-screen. */
 class DownloadService:Service(){
     private val handler=Handler(Looper.getMainLooper())
-    private val tick=object:Runnable{override fun run(){if(!DownloadRepository.hasActive()){stopForeground(ServiceCompat.STOP_FOREGROUND_REMOVE);stopSelf();return};update();handler.postDelayed(this,1000)}}
+    private val tick=object:Runnable{override fun run(){if(!DownloadRepository.hasActive()){ServiceCompat.stopForeground(this@DownloadService,ServiceCompat.STOP_FOREGROUND_REMOVE);stopSelf();return};update();handler.postDelayed(this,1000)}}
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{ServiceCompat.startForeground(this,2001,notification(),android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);handler.removeCallbacks(tick);handler.post(tick);return START_NOT_STICKY}
     private fun notification():android.app.Notification{

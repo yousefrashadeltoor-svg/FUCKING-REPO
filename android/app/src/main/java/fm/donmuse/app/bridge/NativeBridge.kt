@@ -72,7 +72,7 @@ class NativeBridge(
         else->null
     }
     private fun granted(kind:String):Boolean=when(kind){
-        "exactAlarm"->activity.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+        "exactAlarm"->if(Build.VERSION.SDK_INT>=31)activity.getSystemService(AlarmManager::class.java).canScheduleExactAlarms() else true
         "notifications"->NotificationManagerCompat.from(activity).areNotificationsEnabled()
         else->permission(kind)?.let{ContextCompat.checkSelfPermission(activity,it)==PackageManager.PERMISSION_GRANTED} ?: true
     }
