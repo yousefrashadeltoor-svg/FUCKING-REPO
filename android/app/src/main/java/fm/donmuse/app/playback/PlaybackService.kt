@@ -34,6 +34,9 @@ import fm.donmuse.app.data.MediaExtractor
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
+import androidx.media3.common.util.UnstableApi
+
+@androidx.annotation.OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
     private var session:MediaSession?=null
     private val resolved=ConcurrentHashMap<String,String>()

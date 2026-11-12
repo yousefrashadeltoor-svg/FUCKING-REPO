@@ -18,7 +18,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
+import androidx.media3.common.util.UnstableApi
+
 /** ExoPlayer is authoritative; every player call and read uses the main looper. */
+@androidx.annotation.OptIn(UnstableApi::class)
 object NativePlayer {
     private val main=Handler(Looper.getMainLooper())
     private var player:ExoPlayer?=null
