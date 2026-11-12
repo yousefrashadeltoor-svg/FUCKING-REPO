@@ -32,7 +32,7 @@ object Http {
         require(!u.host.isNullOrBlank()&&u.userInfo==null){"رابط غير صالح"}
         publicAddresses(u.host.removeSuffix(".").lowercase());return url
     }
-    fun request(url:String,headers:Map<String,String>=emptyMap()):Request.Builder{
+    fun request(url:String,headers:Map<String,String> = emptyMap()):Request.Builder{
         validate(url)
         return Request.Builder().url(url).header("User-Agent",UA).apply{headers.forEach{(k,v)->if(k.lowercase() !in setOf("cookie","authorization","proxy-authorization","host","content-length"))header(k,v)}}
     }

@@ -108,7 +108,7 @@ object MediaExtractor {
         val directFile=!supported(url)&&java.net.URI(url).path.substringAfterLast('.', "").lowercase() in setOf("mp3","m4a","mp4","aac","ogg","opus","flac","wav","webm","m4v")
         if(duration<=0&&directFile) {
             val retriever=android.media.MediaMetadataRetriever()
-            try { retriever.setDataSource(url,emptyMap<String,String>();duration=(retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L)/1000 } finally { retriever.release() }
+            try { retriever.setDataSource(url,emptyMap<String,String>());duration=(retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L)/1000 } finally { retriever.release() }
         }
         // Transcoding is offered only when there is actual decodable source audio.
         if(audio.length()>0 || video.length()>0) presets.forEach { p->
@@ -137,7 +137,7 @@ object MediaExtractor {
             return s.url to (s.format?.mimeType ?: "application/octet-stream")
         }
         if(formatId.startsWith("native:")) {
-            val all:List<Stream>=i.audioStreams+i.videoStreams+i.videoOnlyStreams
+            val all:List<Stream> = i.audioStreams + i.videoStreams + i.videoOnlyStreams
             val s=all.find{"native:${i.serviceId}:audio:${it.id}"==formatId || "native:${i.serviceId}:video:${it.id}"==formatId} ?: throw IOException("انتهت صلاحية الصيغة؛ افحص الرابط مجددًا")
             return s.url to (s.format?.mimeType ?: "application/octet-stream")
         }
