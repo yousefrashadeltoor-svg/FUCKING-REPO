@@ -15,7 +15,10 @@ test("APK routing uses an absolute router basename with relative Vite assets", (
 });
 test("native clips bypass network/FFmpeg and never persist a data URL", () => {
   const repo=read("android/app/src/main/java/fm/donmuse/app/download/DownloadRepository.kt");
-  assert.match(repo,/format=="local-clip"/); assert.match(repo,/Never persist or broadcast/); assert.match(repo,/local\.writeBytes/);
+  assert.match(repo,/format=="local-clip"/); assert.match(repo,/never keep\/broadcast/); assert.match(repo,/tmp\.writeBytes/);
+  assert.match(repo,/File\(app\.filesDir,"downloads"\)/); assert.match(repo,/source="local-clip:\$id"/);
+  assert.match(repo,/if\(completed\|\|cancelled\.contains\(id\)\)local\.delete\(\)/);
+  assert.ok(!repo.includes("finally{raw.delete();converted.delete();local.delete()}"));
   assert.match(read("src/components/radio/RadioRecorder.tsx"),/formatId:"local-clip"/);
 });
 test("widget stop uses a broadcast, not an unfulfilled foreground-service start", () => {

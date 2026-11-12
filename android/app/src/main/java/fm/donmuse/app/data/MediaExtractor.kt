@@ -25,7 +25,7 @@ object MediaExtractor {
         if(initialized)return
         NewPipe.init(object:Downloader(){
             override fun execute(request:Request):Response {
-                val builder=Http.request(request.url()).header("Accept-Language",request.localization?.localizationCode ?: "ar,en")
+                val builder=Http.request(request.url()).header("Accept-Language",request.localization()?.localizationCode ?: "ar,en")
                 request.headers().forEach { (k,values)->if(values.isNotEmpty()&&k.lowercase() !in setOf("cookie","authorization","host","content-length")) builder.header(k,values.joinToString(";")) }
                 val data=request.dataToSend()
                 builder.method(request.httpMethod(),data?.toRequestBody())
@@ -58,7 +58,7 @@ object MediaExtractor {
     fun search(query:String,source:String):JSONArray {
         init();require(query.isNotBlank()){"اكتب كلمة بحث"};require(query.length<=300){"البحث طويل جدًا"}
         val svc=if(source=="all")ServiceList.YouTube else service(source)
-        val info=SearchInfo.getInfo(svc,query)
+        val info=SearchInfo.getInfo(svc.getSearchExtractor(query))
         return JSONArray().apply { info.relatedItems.filterIsInstance<StreamInfoItem>().take(40).forEach { put(track(it,svc.serviceInfo.name)) } }
     }
     fun info(url:String):StreamInfo { init();Http.validate(url);return StreamInfo.getInfo(url) }
@@ -70,10 +70,10 @@ object MediaExtractor {
             put("id","native:${info.serviceId}:${kind}:${s.id}");put("kind",kind);put("label","${format.name} · ${resolution.ifBlank { if(bitrate>0)"$bitrate kbps" else "المصدر الأصلي" }}")
             put("ext",format.suffix);put("mime",format.mimeType);put("quality",resolution.ifBlank { format.name });put("bitrateKbps",bitrate)
             put("sizeBytes",if(bitrate>0&&info.duration>0)bitrate*1000*info.duration/8 else 0);put("estimated",true);put("lossless",false);put("cover",false)
-            put("codec",format.name);put("url",s.url)
+            put("codec",format.name);put("url",s.content)
         }
     }
-    private data class Preset(val id:String,val label:String,val ext:String,val mime:String,val codec:String,val bitrate:Int,val lossless:Boolean)
+    data class Preset(val id:String,val label:String,val ext:String,val mime:String,val codec:String,val bitrate:Int,val lossless:Boolean)
     private val presets=listOf(
         Preset("flac","FLAC · بدون فقدان","flac","audio/flac","flac",0,true),
         Preset("alac","ALAC · Apple Lossless","m4a","audio/mp4","alac",0,true),
@@ -96,8 +96,8 @@ object MediaExtractor {
         val audio=JSONArray();val video=JSONArray();var name=title ?: url;var duration=0L;var artwork=cover;var extractor="direct"
         if(supported(url)) {
             val info=info(url);name=info.name;duration=info.duration;artwork=info.thumbnails.maxByOrNull{it.width*it.height}?.url ?: cover;extractor=NewPipe.getService(info.serviceId).serviceInfo.name
-            info.audioStreams.filter{it.url.isNotBlank()}.sortedByDescending{it.averageBitrate}.forEach{audio.put(streamJson(it,"audio",info))}
-            info.videoStreams.filter{it.url.isNotBlank()}.sortedByDescending{it.height}.forEach{video.put(streamJson(it,"video",info))}
+            info.audioStreams.filter{it.isUrl&&it.content.isNotBlank()}.sortedByDescending{it.averageBitrate}.forEach{audio.put(streamJson(it,"audio",info))}
+            info.videoStreams.filter{it.isUrl&&it.content.isNotBlank()}.sortedByDescending{it.height}.forEach{video.put(streamJson(it,"video",info))}
         } else {
             Http.validate(url)
             val path=java.net.URI(url).path.lowercase();val ext=path.substringAfterLast('.',"mp3")
@@ -119,10 +119,10 @@ object MediaExtractor {
     fun resolve(url:String):JSONObject {
         if(!supported(url))return JSONObject().put("url",url).put("direct",true).put("mime",JSONObject.NULL).put("embed",JSONObject.NULL)
         val i=info(url)
-        val audio=i.audioStreams.filter{it.url.isNotBlank()}.maxByOrNull{it.averageBitrate}
-        val video=i.videoStreams.filter{it.url.isNotBlank()}.maxByOrNull{it.height}
+        val audio=i.audioStreams.filter{it.isUrl&&it.content.isNotBlank()}.maxByOrNull{it.averageBitrate}
+        val video=i.videoStreams.filter{it.isUrl&&it.content.isNotBlank()}.maxByOrNull{it.height}
         val s=audio ?: video
-        val urlToPlay=s?.url ?: i.hlsUrl.takeIf{it.isNotBlank()} ?: throw IOException("المصدر لا يتيح تيارًا قابلًا للتشغيل؛ قد يكون محميًا أو يحتاج تسجيل دخول")
+        val urlToPlay=s?.content ?: i.hlsUrl?.takeIf{it.isNotBlank()} ?: throw IOException("المصدر لا يتيح تيارًا قابلًا للتشغيل؛ قد يكون محميًا أو يحتاج تسجيل دخول")
         val mime=s?.format?.mimeType ?: "application/x-mpegURL"
         return JSONObject().put("url",urlToPlay).put("direct",true).put("mime",mime).put("embed",JSONObject.NULL).put("expiry",System.currentTimeMillis()+300_000)
     }
@@ -131,17 +131,17 @@ object MediaExtractor {
         if(formatId=="original"&&!supported(url))return url to mimeForUrl(url)
         require(formatId=="original"||formatId.startsWith("native:")||preset(formatId)!=null){"صيغة غير معروفة"}
         val i=info(url)
-        if(i.audioStreams.isEmpty()&&i.videoStreams.isEmpty()&&i.hlsUrl.isNotBlank())throw IOException("هذا بث مباشر؛ تنزيله كملف مكتمل غير مدعوم")
+        if(i.audioStreams.isEmpty()&&i.videoStreams.isEmpty()&&!i.hlsUrl.isNullOrBlank())throw IOException("هذا بث مباشر؛ تنزيله كملف مكتمل غير مدعوم")
         if(formatId=="original") {
             val s=i.audioStreams.maxByOrNull{it.averageBitrate} ?: i.videoStreams.maxByOrNull{it.height} ?: throw IOException("لا يوجد ملف أصلي متاح")
-            return s.url to (s.format?.mimeType ?: "application/octet-stream")
+            return s.content to (s.format?.mimeType ?: "application/octet-stream")
         }
         if(formatId.startsWith("native:")) {
             val all:List<Stream> = i.audioStreams + i.videoStreams + i.videoOnlyStreams
             val s=all.find{"native:${i.serviceId}:audio:${it.id}"==formatId || "native:${i.serviceId}:video:${it.id}"==formatId} ?: throw IOException("انتهت صلاحية الصيغة؛ افحص الرابط مجددًا")
-            return s.url to (s.format?.mimeType ?: "application/octet-stream")
+            return s.content to (s.format?.mimeType ?: "application/octet-stream")
         }
         val s=i.audioStreams.maxByOrNull{it.averageBitrate} ?: i.videoStreams.maxByOrNull{it.height} ?: throw IOException("لا يوجد صوت قابل للتحويل")
-        return s.url to (s.format?.mimeType ?: "audio/mp4")
+        return s.content to (s.format?.mimeType ?: "audio/mp4")
     }
 }

@@ -13,7 +13,7 @@ import java.util.Calendar
 
 object AlarmScheduler {
     private const val KEY="donmuse.alarms.v1"
-    fun canSchedule(ctx:Context)=Build.VERSION.SDK_INT<31||canSchedule(ctx)
+    fun canSchedule(ctx:Context):Boolean=Build.VERSION.SDK_INT<31||ctx.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
     fun all(ctx:Context):JSONArray=runCatching{JSONArray(AppStorage(ctx).get(KEY) ?: "[]")}.getOrDefault(JSONArray())
     private fun save(ctx:Context,array:JSONArray){AppStorage(ctx).set(KEY,array.toString())}
     fun nextOccurrence(at:Long,days:List<Int>,now:Long=System.currentTimeMillis()):Long {

@@ -53,25 +53,40 @@ object DownloadRepository {
         initialize(app)
         val id=input.optString("id").ifBlank{"dl-${System.currentTimeMillis()}-${System.nanoTime()}"};require(id.matches(Regex("[a-zA-Z0-9_-]{1,160}"))){"معرّف تنزيل غير صالح"}
         val old=jobs[id];if(old!=null&&old.getString("status") in setOf("working","done","queued"))return JSONObject(old.toString())
-        val source=input.optString("sourceUrl").ifBlank{input.optString("url")};require(source.isNotBlank()){"رابط التنزيل مفقود"}
+        val format=input.optString("formatId","original")
+        var source=input.optString("sourceUrl").ifBlank{input.optString("url")}
+        var url=input.optString("url").ifBlank{source};var mime=input.optString("mime","audio/mpeg")
         val name=input.optString("filename","DON-MUSE-${System.currentTimeMillis()}").replace(Regex("[\\\\/:*?\"<>|\\x00-\\x1f]"),"_").take(180)
-        var url=input.optString("url").ifBlank{source};var mime=input.optString("mime","audio/mpeg");val format=input.optString("formatId","original")
-        if(url.startsWith("data:")){
-            // Never persist or broadcast an 80 MB base64 URL on every progress tick.
-            val comma=url.indexOf(',');require(comma>0&&url.length<112*1024*1024){"ملف محلي غير صالح أو أكبر من 80 MB"}
-            val bytes=Base64.decode(url.substring(comma+1),Base64.DEFAULT);require(bytes.size in 1..80*1024*1024){"الملف المحلي فارغ أو كبير جدًا"}
-            val dir=File(app.cacheDir,"downloads").apply{mkdirs()};val local=File(dir,"$id.local");local.writeBytes(bytes);url=Uri.fromFile(local).toString();mime=urlMime(input.optString("mime"),name)
-        }
+        if(format=="local-clip"||url.startsWith("data:")){
+            require(format=="local-clip"){"بايتات محلية مسموحة للمقاطع فقط"}
+            // Persist the bytes once outside cacheDir, and never keep/broadcast the
+            // base64 payload in job JSON. Pause/retry can reuse this file after a
+            // process restart; it is removed only after success or cancellation.
+            val dir=File(app.filesDir,"downloads").apply{mkdirs()};val local=File(dir,"$id.local")
+            if(url.startsWith("data:")){
+                val comma=url.indexOf(',');require(comma>0&&url.length<112*1024*1024){"ملف محلي غير صالح أو أكبر من 80 MB"}
+                val bytes=Base64.decode(url.substring(comma+1),Base64.DEFAULT);require(bytes.size in 1..80*1024*1024){"الملف المحلي فارغ أو كبير جدًا"}
+                val tmp=File(dir,"$id.local.tmp");tmp.writeBytes(bytes);check(tmp.renameTo(local)){"تعذّر حفظ المقطع محليًا"}
+            }
+            require(local.isFile&&local.length()>0){"ملف المقطع المحلي غير موجود؛ احفظه من المسجل مجددًا"}
+            source="local-clip:$id";url=Uri.fromFile(local).toString();mime=urlMime(input.optString("mime"),name)
+        } else require(source.isNotBlank()){"رابط التنزيل مفقود"}
         val j=JSONObject(input.toString()).put("id",id).put("sourceUrl",source).put("url",url).put("filename",name).put("title",input.optString("title",name)).put("artist",input.optString("artist","")).put("cover",input.optString("cover").takeIf{it.isNotBlank()&&it!="null"} ?: JSONObject.NULL).put("mime",mime).put("formatId",format).put("preset",if(format=="local-clip")"original" else input.optString("preset","original")).put("kind",input.optString("kind","full")).put("status","queued").put("progress",0).put("received",0).put("total",0).put("error",JSONObject.NULL).put("addedAt",System.currentTimeMillis())
         jobs[id]=j;cancelled.remove(id);paused.remove(id);persist();submit(id);return JSONObject(j.toString())
     }
+    private fun localFile(id:String)=File(File(app.filesDir,"downloads"),"$id.local")
+    private fun cleanup(id:String){val dir=File(app.cacheDir,"downloads");File(dir,"$id.source").delete();File(dir,"$id.output").delete();localFile(id).delete()}
     private fun urlMime(mime:String,name:String)=mime.takeIf{it.contains('/')&&!it.contains('*')} ?: when(name.substringAfterLast('.').lowercase()){"aac"->"audio/aac";"mp4"->"video/mp4";"m4a"->"audio/mp4";"flac"->"audio/flac";"wav"->"audio/wav";else->"audio/mpeg"}
     private fun submit(id:String){if(!active.add(id))return;pool.execute{try{process(id)}catch(e:Exception){patch(id){it.put("status",if(paused.contains(id))"paused" else if(cancelled.contains(id))"cancelled" else "error").put("error",if(paused.contains(id)||cancelled.contains(id))JSONObject.NULL else e.message ?: "فشل التنزيل")}}finally{active.remove(id);calls.remove(id);paused.remove(id);DownloadService.refresh(app)}}}
     fun action(id:String,action:String):JSONObject?{
         when(action){
-            "cancel"->{cancelled.add(id);calls[id]?.cancel();synchronized(this){jobs.remove(id);persist()}}
+            "cancel"->{cancelled.add(id);calls[id]?.cancel();synchronized(this){jobs.remove(id);persist()};cleanup(id)}
             "pause"->{paused.add(id);calls[id]?.cancel();patch(id){it.put("status","paused")}}
-            "resume","retry"->{val j=get(id) ?: return null;if(j.getString("status")=="working")return j;enqueue(j)}
+            "resume","retry"->{
+                val j=get(id) ?: return null;if(j.getString("status")=="working")return j
+                if(j.optString("formatId")=="local-clip"&&!localFile(id).isFile){patch(id){it.put("status","error").put("error","ملف المقطع المحلي غير موجود؛ احفظه من المسجل مجددًا")};return get(id)}
+                cancelled.remove(id);paused.remove(id);patch(id){it.put("status","queued").put("error",JSONObject.NULL)};submit(id)
+            }
         }
         return get(id)
     }
@@ -82,11 +97,14 @@ object DownloadRepository {
     private fun process(id:String){
         if(cancelled.contains(id)||paused.contains(id))return
         patch(id){it.put("status","working").put("error",JSONObject.NULL)};DownloadService.ensure(app)
-        val j=get(id) ?: return;val dir=File(app.cacheDir,"downloads").apply{mkdirs()};val raw=File(dir,"$id.source");val converted=File(dir,"$id.output");val local=File(dir,"$id.local")
+        val j=get(id) ?: return;val dir=File(app.cacheDir,"downloads").apply{mkdirs()};val raw=File(dir,"$id.source");val converted=File(dir,"$id.output");val local=localFile(id)
+        var completed=false
         try{
             var url=j.optString("url").ifBlank{j.getString("sourceUrl")};val format=j.getString("formatId");var mime=j.getString("mime")
-            if(local.isFile){checkInterrupt(id);local.inputStream().use{input->raw.outputStream().use{copy(id,input,it,local.length())}}}
-            else{
+            if(j.optString("formatId")=="local-clip"){
+                require(local.isFile&&local.length()>0){"ملف المقطع المحلي غير موجود؛ احفظه من المسجل مجددًا"}
+                checkInterrupt(id);local.inputStream().use{input->raw.outputStream().use{copy(id,input,it,local.length())}}
+            } else {
                 if(format!="local-clip"){val resolved=MediaExtractor.downloadUrl(j.getString("sourceUrl"),format);url=resolved.first;mime=resolved.second}
                 val call=Http.client.newBuilder().readTimeout(120,TimeUnit.SECONDS).build().newCall(Http.request(url,headers(j)).build());calls[id]=call
                 call.execute().use{r->if(!r.isSuccessful)throw IOException("المصدر رفض التنزيل (HTTP ${r.code})");val body=r.body ?: throw IOException("ملف فارغ");val finalMime=r.header("Content-Type")?.substringBefore(';') ?: mime;if(finalMime.contains("text/html"))throw IOException("الرابط صفحة وليس ملف وسائط");mime=finalMime;raw.outputStream().use{copy(id,body.byteStream(),it,body.contentLength().coerceAtLeast(0))}}
@@ -98,8 +116,9 @@ object DownloadRepository {
             val finalMime=if(needsFfmpeg)MediaExtractor.preset(preset)?.mime ?: mime else mime
             val filename=if(needsFfmpeg)j.getString("filename").substringBeforeLast('.')+"."+(MediaExtractor.preset(preset)?.ext ?: "mp3")else j.getString("filename")
             val uri=publish(output,filename,finalMime,j.optString("title"),j.optString("artist"))
+            completed=true
             patch(id){it.put("status","done").put("progress",100).put("received",output.length()).put("total",output.length()).put("size",output.length()).put("uri",uri.toString()).put("filename",filename).put("mime",finalMime).put("url",uri.toString())}
-        }finally{raw.delete();converted.delete();local.delete()}
+        }finally{raw.delete();converted.delete();if(completed||cancelled.contains(id))local.delete()}
     }
     private fun publish(file:File,name:String,mime:String,title:String,artist:String):Uri{
         val video=mime.startsWith("video/")

@@ -38,7 +38,9 @@ object DeviceMusic {
         var size=doc?.length() ?: 0L;var mime=ctx.contentResolver.getType(uri) ?: "audio/*"
         var duration=0L;var artist="فنان غير معروف";var album="";var year=0;var track=0
         runCatching { ctx.contentResolver.query(uri,arrayOf(MediaStore.MediaColumns.DISPLAY_NAME,MediaStore.MediaColumns.SIZE,MediaStore.MediaColumns.MIME_TYPE,MediaStore.MediaColumns.DURATION,MediaStore.Audio.Media.ARTIST,MediaStore.Audio.Media.ALBUM,MediaStore.Audio.Media.YEAR,MediaStore.Audio.Media.TRACK),null,null,null)?.use { c->
-            if(c.moveToNext()) { fun text(k:String)=c.getColumnIndex(k).takeIf{it>=0}?.let{c.getString(it)};fun long(k:String)=c.getColumnIndex(k).takeIf{it>=0}?.let{c.getLong(it)} ?: 0L
+            if(c.moveToNext()) {
+                fun text(k:String)=c.getColumnIndex(k).takeIf{it>=0}?.let{c.getString(it)}
+                fun long(k:String)=c.getColumnIndex(k).takeIf{it>=0}?.let{c.getLong(it)} ?: 0L
                 title=text(MediaStore.MediaColumns.DISPLAY_NAME) ?: title;size=long(MediaStore.MediaColumns.SIZE);mime=text(MediaStore.MediaColumns.MIME_TYPE) ?: mime;duration=long(MediaStore.MediaColumns.DURATION);artist=text(MediaStore.Audio.Media.ARTIST) ?: artist;album=text(MediaStore.Audio.Media.ALBUM) ?: "";year=long(MediaStore.Audio.Media.YEAR).toInt();track=long(MediaStore.Audio.Media.TRACK).toInt()
             }
         } }
