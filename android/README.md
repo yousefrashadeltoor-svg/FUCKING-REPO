@@ -1,29 +1,36 @@
-# DON MUSE — native Android app (Kotlin)
+# DON MUSE for Android
 
-A **real native Android application** (not a WebView wrapper). Everything below runs on-device.
+Kotlin native capabilities around a **bundled** React UI. This is a hybrid app, not a hosted-site wrapper and not a Compose UI.
 
-## What's inside
-| Feature | Implementation |
-|---|---|
-| Browse & play **device music offline** | `MediaStore` scan (`data/DeviceMusic.kt`) + Media3 ExoPlayer |
-| Background playback + **real notification** with actions | `playback/PlaybackService.kt` (MediaSessionService, MediaStyle) |
-| **Widgets** with full controls (prev / play-pause / next / stop) | `widget/NowPlayingWidget.kt` (4×2) + `widget/MiniPlayerWidget.kt` (4×1) + `res/layout/widget_*.xml` |
-| **New-release / followed-artist notifications** | `notify/ReleaseCheckWorker.kt` (WorkManager, every 6h) + `BootReceiver` |
-| **Real permissions** | `READ_MEDIA_AUDIO`, `POST_NOTIFICATIONS`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` |
-| Quran (complete surahs) + Egyptian radio | pulls `/api/quran`, `/api/radio` from the DON MUSE server |
-| Deep links `donmuse://track/ID` and `https://donmuse.app/track/ID` | manifest intent filters |
-| Offline-first UI | Compose UI is fully local; only streaming/search need network |
+## Build from the repository root
 
-## Build the APK
 ```bash
-# 1) prerequisites: JDK 17 + Android SDK (platform 34, build-tools 34.0.0)
-export ANDROID_HOME=$HOME/Android/Sdk
-cd android && ./build-apk.sh
-#    → app/build/outputs/apk/debug/app-debug.apk
+npm ci --ignore-scripts
+npm run bundle
+cd android
+./build-apk.sh
 ```
-Or push to GitHub — `.github/workflows/android-apk.yml` builds the APK and uploads it as an artifact.
 
-Point the app at your DON MUSE server (default `https://donmuse.app`) in
-`DonMuseApp.kt → API_BASE`, then rebuild.
+Requirements: JDK 17, Android SDK 35, Gradle wrapper 8.7 (included). The Gradle `requireBundledUi` task fails if `app/src/main/assets/www/index.html` or `native-bootstrap.js` is missing. There is no remote fallback.
 
-Developer: **Joseph M.R**
+- Package: `fm.donmuse.app`
+- Version: `3.0.0` (30)
+- minSdk 26; compile/targetSdk 35
+- ABIs: arm64-v8a, x86_64
+- UI origin: `https://appassets.androidplatform.net/assets/www/` via `WebViewAssetLoader`
+- Router basename in APK: `/assets/www`; Vite assets are relative (`--mode android`)
+
+## Native modules
+
+- `playback/`: Media3 1.4.1 ExoPlayer, MediaSessionService, MediaStyle notification, lazy source resolution, audio focus, 10-band PCM EQ, repeat/shuffle/sleep/fade.
+- `download/`: two streaming workers, FFmpeg conversion/clipping, scoped MediaStore publication (legacy permission only on API 26–28), persistent job state.
+- `alarms/`: exact AlarmClock scheduling, full-screen alarm UI, system ringtone, snooze and weekly recurrence.
+- `widget/`: 4×2 and 4×1 RemoteViews providers. Controls use broadcasts; only an explicit play/restore starts the foreground service.
+- `bridge/`: per-document random capability, async replies/events, atomic app-private JSON storage.
+- `data/`: OkHttp with private-address DNS guard, NewPipeExtractor, MediaStore/SAF scanning, local FFmpeg helpers.
+
+## Signing
+
+Release uses `DONMUSE_KEYSTORE`, `DONMUSE_STORE_PASSWORD`, `DONMUSE_KEY_ALIAS`, `DONMUSE_KEY_PASSWORD` when provided. Otherwise it is explicitly a **debug-signed development build**. CI decodes `DONMUSE_KEYSTORE_B64` before invoking Gradle and labels unsigned-production artifacts `DEV-SIGNED`.
+
+See `../docs/ANDROID.md` for the bridge contract and device QA checklist. Do not commit `local.properties`, keystores, or generated `assets/www`.

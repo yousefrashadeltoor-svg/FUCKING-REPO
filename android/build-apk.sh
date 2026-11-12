@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
-# DON MUSE — build a real Android APK.
-# Requirements: JDK 17 + Android SDK (platform 34, build-tools 34.0.0).
-#   export ANDROID_HOME=$HOME/Android/Sdk
-#   ./build-apk.sh            → app/build/outputs/apk/debug/app-debug.apk
+# Build the real bundled DON MUSE APK. No hosted UI fallback.
 set -euo pipefail
 cd "$(dirname "$0")"
 if ! command -v java >/dev/null; then
-  echo "✗ JDK 17 is required. Install it (e.g. sudo apt install openjdk-17-jdk) and retry."; exit 1
+  echo "JDK 17 is required (java was not found)." >&2; exit 1
 fi
-if [ -z "${ANDROID_HOME:-}" ]; then
-  echo "✗ ANDROID_HOME is not set (Android SDK with platform 34 + build-tools 34.0.0)."; exit 1
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+  echo "Set ANDROID_HOME (or ANDROID_SDK_ROOT) to an SDK containing platforms;android-35." >&2; exit 1
 fi
-echo "sdk.dir=$ANDROID_HOME" > local.properties
-chmod +x gradlew 2>/dev/null || true
-if [ ! -x gradlew ]; then
-  if command -v gradle >/dev/null; then gradle wrapper --gradle-version 8.7; else
-    echo "✗ Gradle not found. Install Gradle 8.7 or add the Gradle wrapper (gradle wrapper)."; exit 1
-  fi
+if [ "${SKIP_WEB_BUNDLE:-0}" != "1" ]; then
+  (cd .. && npm run bundle)
 fi
-./gradlew :app:assembleDebug --no-daemon
-echo "✓ APK: $(pwd)/app/build/outputs/apk/debug/app-debug.apk"
+printf 'sdk.dir=%s\n' "$SDK" > local.properties
+chmod +x gradlew
+TASKS=(:app:assembleDebug :app:lintDebug)
+if [ "${BUILD_RELEASE:-0}" = "1" ]; then TASKS+=(:app:assembleRelease); fi
+./gradlew "${TASKS[@]}" --no-daemon --stacktrace
+echo "Debug APK: $PWD/app/build/outputs/apk/debug/app-debug.apk"
+if [ "${BUILD_RELEASE:-0}" = "1" ]; then
+  echo "Release APK: $PWD/app/build/outputs/apk/release/app-release.apk"
+  if [ -z "${DONMUSE_KEYSTORE:-}" ]; then echo "WARNING: release is DEV-SIGNED with the debug key, not a production signature." >&2; fi
+fi
