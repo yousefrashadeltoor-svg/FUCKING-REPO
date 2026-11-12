@@ -1,4 +1,3 @@
-"use client";
 
 // Horizontal scrollable section with arrow controls + staggered reveal.
 import { useRef } from "react";
@@ -25,20 +24,20 @@ export function SectionRow({ title, subtitle, children, action }: Props) {
       <div className="mb-3 flex items-end justify-between gap-4 px-1">
         <div>
           <h2 className="text-xl font-extrabold tracking-tight">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-[13px] text-white/40">{subtitle}</p>}
+          {subtitle && <p className="mt-0.5 text-sm text-[color:var(--app-muted)]">{subtitle}</p>}
         </div>
         <div className="flex items-center gap-2">
           {action}
           <button
             onClick={() => scrollBy(-1)}
-            className="grid size-8 place-items-center rounded-full bg-white/[0.06] text-white/60 hover:bg-white/12 hover:text-white"
+            className="grid size-10 place-items-center rounded-full bg-white/[0.06] text-white/60 hover:bg-white/12 hover:text-white"
             aria-label="Scroll left"
           >
             <ChevronLeft className="size-4 rtl:rotate-180" />
           </button>
           <button
             onClick={() => scrollBy(1)}
-            className="grid size-8 place-items-center rounded-full bg-white/[0.06] text-white/60 hover:bg-white/12 hover:text-white"
+            className="grid size-10 place-items-center rounded-full bg-white/[0.06] text-white/60 hover:bg-white/12 hover:text-white"
             aria-label="Scroll right"
           >
             <ChevronRight className="size-4 rtl:rotate-180" />

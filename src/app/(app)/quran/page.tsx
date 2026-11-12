@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  Al-Qur'an Al-Kareem — a sacred, elevated section, distinct from the rest
@@ -10,12 +9,14 @@ import { useMemo, useRef, useState } from "react";
 import { Play, Pause, Download, ChevronRight, Search, ShieldCheck, BookOpen, Landmark, Loader2, ArrowLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { cn, formatTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { usePlayerStore } from "@/stores/player-store";
 import { playTrackNow, togglePlayNow } from "@/lib/player-actions";
-import { RECITERS, SURAHS, streamProxy, downloadUrl, reciterByCode, getSurah, QURAN_SOURCES, type Reciter, type Surah } from "@/lib/server/quran";
+import { RECITERS, SURAHS, streamProxy, reciterByCode, getSurah, QURAN_SOURCES, type Reciter, type Surah } from "@/lib/data/quran";
 import type { TrackDTO } from "@/lib/types";
+import { useDownloadStore } from "@/stores/download-store";
+import { remember } from "@/lib/local/state";
 
 const PATTERN =
   "data:image/svg+xml," +
@@ -91,7 +92,7 @@ export default function QuranPage() {
   const [rq, setRq] = useState("");
   const [quality, setQuality] = useState<QQuality>("high");
   const [downloading, setDownloading] = useState<number | null>(null);
-  const [loadingSurah, setLoadingSurah] = useState<number | null>(null);
+  // Stream errors are reported by the shared player.
   const current = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isQuran = current?.source === "quran";
@@ -117,24 +118,11 @@ export default function QuranPage() {
     playTrackNow(quranTrack(r, s, quality));
     toast(t("quranNowReciting"), { description: `${s.ar} · ${r.name}` });
   };
-  const dl = async (r: Reciter, s: Surah) => {
+  const dl = (r: Reciter, s: Surah) => {
     setDownloading(s.n);
-    toast(t("dlStarted"));
-    try {
-      const res = await fetch(downloadUrl(s.n, r.code, quality));
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `AlQuran-${String(s.n).padStart(3, "0")}-${s.en.replace(/\s+/g, "-")}-${r.code}.mp3`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 6000);
-      toast.success(`${t("quranDownloadFull")} · ${(blob.size / 1e6).toFixed(1)} MB`);
-    } catch (e) {
-      toast.error(`${t("dlFailed")}: ${(e as Error).message}`);
-    } finally {
-      setDownloading(null);
-    }
+    const track=quranTrack(r,s,quality); remember([track]);
+    useDownloadStore.getState().add({title:`${s.ar} — ${r.name}`,artist:r.name,cover:null,kind:"quran",preset:"original",formatId:"original",url:track.streamUrl,sourceUrl:track.streamUrl,filename:`AlQuran-${String(s.n).padStart(3,"0")}-${s.en.replace(/\s+/g,"-")}-${r.code}.mp3`,mime:"audio/mpeg",track});
+    toast.success("أُضيفت السورة كاملة إلى مركز التحميل");setDownloading(null);
   };
 
   return (

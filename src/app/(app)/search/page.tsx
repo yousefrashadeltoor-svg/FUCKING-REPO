@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Search — artists and official profiles FIRST, then songs, albums, playlists.
@@ -57,7 +57,7 @@ function ArtistResult({ artist }: { artist: ArtistDTO }) {
       <Link href={`/artists/${artist.id}`} className="block">
         <div className="relative aspect-[16/9] overflow-hidden">
           {artist.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+
             <img
               src={artist.imageUrl}
               alt={artist.name}
@@ -126,7 +126,7 @@ function SearchPageInner() {
     setError(null);
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(q.trim())}&source=${source}`, { signal: ctrl.signal })
+      localFetch(`/api/search?q=${encodeURIComponent(q.trim())}&source=${source}`, { signal: ctrl.signal })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
         .then((data: SearchResultsDTO) => {
           setResults(data);

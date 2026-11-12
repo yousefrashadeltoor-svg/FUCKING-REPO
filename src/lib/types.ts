@@ -237,6 +237,9 @@ export interface DownloadFormatDTO {
   lossless: boolean;
   cover: boolean; // cover art embedded
   codec: string;
+  /** Direct media URL when the source exposes one (never a server proxy). */
+  url?: string;
+  headers?: Record<string, string>;
 }
 
 export interface StatsDTO {

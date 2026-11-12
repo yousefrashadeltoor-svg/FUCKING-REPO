@@ -1,4 +1,3 @@
-"use client";
 
 // «موسيقاي» — device library store.
 // Holds the real device scan plus app-private playlists/edits and exposes the
@@ -99,7 +98,7 @@ export const useDeviceLibrary = create<DeviceLibraryState>()((set, get) => ({
   scan: async () => {
     set({ scanning: true, error: null });
     try {
-      const result = scanNative();
+      const result = await scanNative();
       if (result.source === "mediastore") {
         const merged = { ...get().stats };
         set({
@@ -125,7 +124,7 @@ export const useDeviceLibrary = create<DeviceLibraryState>()((set, get) => ({
   },
 
   grant: async (kinds = ["audio", "video", "notifications"]) => {
-    const ok = requestMediaPermissions(kinds);
+    const ok = await requestMediaPermissions(kinds);
     if (ok) await get().scan();
     return ok;
   },

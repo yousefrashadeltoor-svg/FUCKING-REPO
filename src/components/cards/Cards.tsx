@@ -1,4 +1,3 @@
-"use client";
 
 // Content cards: Track / Album / Artist / Playlist / Station / Room.
 // Hover reveals a play button; click plays into the global queue.
@@ -19,7 +18,7 @@ function PlayOverlay({ onPlay }: { onPlay: () => void }) {
       initial={{ opacity: 0, scale: 0.7 }}
       whileHover={{ scale: 1.08 }}
       whileTap={{ scale: 0.9 }}
-      className="absolute bottom-2 right-2 grid size-11 place-items-center rounded-full bg-[#1DB954] text-black opacity-0 shadow-xl shadow-black/50 transition-opacity duration-200 group-hover:opacity-100"
+      className="absolute bottom-2 right-2 grid size-12 place-items-center rounded-full bg-[#1DB954] text-black opacity-100 shadow-xl shadow-black/50 transition-opacity duration-200 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -54,7 +53,7 @@ export function TrackCard({ track, queue, index }: { track: TrackDTO; queue?: Tr
     >
       <div className="relative mb-3">
         {track.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={track.coverUrl} alt={track.albumTitle ?? track.title} className="aspect-square w-full rounded-xl object-cover" />
         ) : (
           <div className="aspect-square w-full rounded-xl bg-white/10" />
@@ -62,13 +61,13 @@ export function TrackCard({ track, queue, index }: { track: TrackDTO; queue?: Tr
         <SourceBadge track={track} />
         <PlayOverlay onPlay={() => playTrackNow(track, queue ? { queue, index: index ?? 0 } : undefined)} />
       </div>
-      <p className="truncate text-sm font-semibold">{track.title}</p>
-      <p className="flex items-center gap-1 truncate text-xs text-white/45">
+      <p className="truncate text-base font-semibold">{track.title}</p>
+      <p className="flex items-center gap-1 truncate text-sm text-[color:var(--app-muted)]">
         {liked && <Heart className="size-3 shrink-0 fill-rose text-rose" />}
         {track.artistName}
       </p>
       <p className="mt-0.5 font-mono text-[10px] text-white/30">
-        {track.genre} · {Math.round(track.bpm)} BPM · {formatTime(track.durationSec)}
+        {[track.genre, track.bpm > 0 ? `${Math.round(track.bpm)} BPM` : null, track.durationSec > 0 ? formatTime(track.durationSec) : null].filter(Boolean).join(" · ")}
       </p>
     </div>
   );
@@ -79,18 +78,18 @@ export function AlbumCard({ album }: { album: AlbumDTO }) {
     <Link href={`/albums/${album.id}`} className="card-hover group relative block shrink-0 rounded-2xl bg-white/[0.03]" style={{ width: "var(--density-card-w)", padding: "var(--density-card-pad)" }}>
       <div className="relative mb-3">
         {album.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={album.coverUrl} alt={album.title} className="aspect-square w-full rounded-xl object-cover" />
         ) : (
           <div className="aspect-square w-full rounded-xl bg-white/10" />
         )}
         <span className="absolute start-2 top-2"><AlbumLikeButton albumId={album.id} initial={album.liked} compact /></span>
-        <span className="absolute bottom-2 end-2 grid size-11 place-items-center rounded-full bg-[#1DB954] text-black opacity-0 shadow-xl transition-opacity duration-200 group-hover:opacity-100">
+        <span className="absolute bottom-2 end-2 grid size-12 place-items-center rounded-full bg-[#1DB954] text-black opacity-100 shadow-xl transition-opacity duration-200 md:opacity-0 md:group-hover:opacity-100">
           <Play className="ms-0.5 size-5 fill-black" />
         </span>
       </div>
-      <p className="truncate text-sm font-semibold">{album.title}</p>
-      <p className="truncate text-xs text-white/45">
+      <p className="truncate text-base font-semibold">{album.title}</p>
+      <p className="truncate text-sm text-[color:var(--app-muted)]">
         {album.artistName}{album.releaseDate ? ` · ${album.releaseDate.slice(0, 4)}` : ""}
       </p>
     </Link>
@@ -99,10 +98,10 @@ export function AlbumCard({ album }: { album: AlbumDTO }) {
 
 export function ArtistCard({ artist }: { artist: ArtistDTO }) {
   return (
-    <Link href={`/artists/${artist.id}`} className="card-hover group relative block shrink-0 rounded-2xl bg-white/[0.03] text-center" style={{ width: "calc(var(--density-card-w) - 1rem)", padding: "var(--density-card-pad)" }}>
+    <Link href={`/artists/${artist.id}`} className="card-hover group relative block shrink-0 rounded-2xl bg-white/[0.03] text-center" style={{ width: "var(--density-card-w)", padding: "var(--density-card-pad)" }}>
       <span className="relative mx-auto mb-3 block aspect-square w-full">
         {artist.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={artist.imageUrl} alt={artist.name} className="h-full w-full rounded-full object-cover ring-2 ring-white/10" />
         ) : (
           <span className="grid h-full w-full place-items-center rounded-full bg-white/10 text-3xl font-black text-white/60">{artist.name[0]}</span>
@@ -111,11 +110,11 @@ export function ArtistCard({ artist }: { artist: ArtistDTO }) {
           <BrandIcon name={artist.source} color="brand" className="size-3.5" />
         </span>
       </span>
-      <p className="flex items-center justify-center gap-1 truncate text-sm font-semibold">
+      <p className="flex items-center justify-center gap-1 truncate text-base font-semibold">
         {artist.name}
         {artist.verified && <BadgeCheck className="size-3.5 shrink-0 text-cyan" />}
       </p>
-      <p className="text-[11px] text-white/40">{formatCount(artist.monthlyListeners)} · {artist.followers} ♥</p>
+      <p className="text-xs text-[color:var(--app-muted)]">{[artist.monthlyListeners > 0 ? formatCount(artist.monthlyListeners) : null, artist.followers > 0 ? `${formatCount(artist.followers)} متابع` : null].filter(Boolean).join(" · ") || artist.source}</p>
       <span className="mt-2 flex justify-center"><FollowButton artistId={artist.id} initial={artist.following} size="sm" /></span>
     </Link>
   );
@@ -126,18 +125,18 @@ export function PlaylistCard({ playlist }: { playlist: PlaylistDTO }) {
     <Link href={`/playlists/${playlist.id}`} className="card-hover group relative block shrink-0 rounded-2xl bg-white/[0.03]" style={{ width: "var(--density-card-w)", padding: "var(--density-card-pad)" }}>
       <div className="relative mb-3">
         {playlist.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={playlist.coverUrl} alt={playlist.title} className="aspect-square w-full rounded-xl object-cover" />
         ) : (
           <div className="aspect-square w-full rounded-xl bg-gradient-to-br from-[#4E54C8] to-[#FA2D55]" />
         )}
-        <span className="absolute bottom-2 right-2 grid size-11 place-items-center rounded-full bg-[#1DB954] text-black opacity-0 shadow-xl transition-opacity duration-200 group-hover:opacity-100">
+        <span className="absolute bottom-2 right-2 grid size-12 place-items-center rounded-full bg-[#1DB954] text-black opacity-100 shadow-xl transition-opacity duration-200 md:opacity-0 md:group-hover:opacity-100">
           <Play className="ml-0.5 size-5 fill-black" />
         </span>
       </div>
-      <p className="truncate text-sm font-semibold">{playlist.title}</p>
-      <p className="truncate text-xs text-white/45">
-        {playlist.trackCount} tracks · {formatTime(playlist.durationSec)}
+      <p className="truncate text-base font-semibold">{playlist.title}</p>
+      <p className="truncate text-sm text-[color:var(--app-muted)]">
+        {playlist.trackCount} مقاطع{playlist.durationSec > 0 ? ` · ${formatTime(playlist.durationSec)}` : ""}
       </p>
     </Link>
   );
@@ -147,17 +146,16 @@ export function StationCard({ station, onPlay }: { station: RadioStationDTO; onP
   return (
     <div className="card-hover group relative shrink-0 cursor-pointer rounded-2xl bg-white/[0.03]" style={{ width: "calc(var(--density-card-w) + 4rem)", padding: "var(--density-card-pad)" }} onClick={onPlay}>
       <div className="relative mb-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={station.coverUrl} alt={station.name} className="aspect-video w-full rounded-xl object-cover" />
         <span className="absolute left-2 top-2 flex items-center gap-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-cyan backdrop-blur">
           <Radio className="size-3" /> LIVE
         </span>
         <PlayOverlay onPlay={onPlay} />
       </div>
-      <p className="truncate text-sm font-semibold">{station.name}</p>
+      <p className="truncate text-base font-semibold">{station.name}</p>
       <p className="line-clamp-2 text-xs text-white/45">{station.description}</p>
       <p className="mt-1 font-mono text-[10px] text-white/30">
-        {station.genre} · {station.trackCount} tracks · energy {Math.round(station.energy * 100)}
+        {[station.genre, station.bitrate > 0 ? `${station.bitrate} kbps` : null, station.codec || null].filter(Boolean).join(" · ")}
       </p>
     </div>
   );

@@ -1,9 +1,7 @@
-"use client";
 
 import { Play, BadgeCheck, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { links, shareUrl } from "@/lib/share";
-import { usePlayerStore } from "@/stores/player-store";
 import { playQueueNow } from "@/lib/player-actions";
 import type { AlbumDTO, ArtistDTO, TrackDTO } from "@/lib/types";
 import { formatTime } from "@/lib/utils";
@@ -27,7 +25,7 @@ export function AlbumHeader({
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/[0.07] to-transparent p-6 md:p-8">
       <div className="flex flex-col gap-5 md:flex-row md:items-end">
         {album.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={album.coverUrl} alt={album.title} className="size-40 rounded-2xl object-cover shadow-2xl md:size-48" />
         ) : (
           <div className="size-40 rounded-2xl bg-white/10 md:size-48" />
@@ -61,7 +59,7 @@ export function AlbumHeader({
             {artist && (
               <Link href={`/artists/${artist.id}`} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] py-1.5 pe-3.5 ps-1.5 text-sm text-white/80 hover:bg-white/10">
                 {artist.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
+
                   <img src={artist.imageUrl} alt="" className="size-7 rounded-full object-cover" />
                 ) : <span className="grid size-7 place-items-center rounded-full bg-white/10 text-xs font-bold">{artist.name[0]}</span>}
                 {artist.name}

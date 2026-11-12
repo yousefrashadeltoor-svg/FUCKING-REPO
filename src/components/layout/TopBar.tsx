@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // Top bar: navigation history, live search (artists first), connection state,
 // diagnostics shortcut and the account chip.
@@ -26,7 +26,7 @@ export function TopBar() {
   const online = useNetworkStore((s) => s.online);
 
   useEffect(() => {
-    void fetch("/api/me")
+    void localFetch("/api/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((u: UserDTO | null) => u && setUser(u))
       .catch(() => {});
@@ -39,7 +39,7 @@ export function TopBar() {
     }
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
+      localFetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
         .then((r) => (r.ok ? r.json() : null))
         .then((data: SearchResultsDTO | null) => {
           if (!data) return;
@@ -62,7 +62,7 @@ export function TopBar() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const playTrack = usePlayerStore((s) => s.playTrack);
+  const _playTrack = usePlayerStore((s) => s.playTrack);
   const totalResults = results
     ? results.tracks.length + results.albums.length + results.artists.length + results.playlists.length
     : 0;
@@ -144,7 +144,7 @@ export function TopBar() {
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start transition-colors hover:bg-white/[0.08]"
                   >
                     {a.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
+
                       <img src={a.imageUrl} alt="" className="size-9 rounded-full object-cover" />
                     ) : (
                       <span className="grid size-9 place-items-center rounded-full bg-white/10 text-xs font-bold">{a.name.slice(0, 1)}</span>
@@ -179,7 +179,7 @@ export function TopBar() {
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start transition-colors hover:bg-white/[0.08]"
                   >
                     {tr.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
+
                       <img src={tr.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
                     )}
                     <span className="min-w-0 flex-1">
@@ -205,7 +205,7 @@ export function TopBar() {
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start transition-colors hover:bg-white/[0.08]"
                   >
                     {a.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
+
                       <img src={a.coverUrl} alt="" className="size-9 rounded-lg object-cover" />
                     )}
                     <span className="min-w-0 flex-1">
@@ -250,7 +250,7 @@ export function TopBar() {
         <div className="user-plate hidden items-center gap-2.5 py-1.5 pe-3.5 ps-1.5 sm:flex">
           <span className="relative grid place-items-center">
             {user?.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+
               <img
                 src={user.avatarUrl}
                 alt={user.name}

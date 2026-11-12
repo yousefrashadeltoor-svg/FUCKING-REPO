@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Live Radio — real stations from Radio-Browser. Egyptian stations first,
@@ -38,6 +38,7 @@ function RadioPageInner() {
   const params = useSearchParams();
   const deepStation = params.get("station");
   const deepHandled = useRef(false);
+  const playRef = useRef<(station: RadioStationDTO) => void>(() => {});
   const [clipsTick, setClipsTick] = useState(0);
   const [egypt, setEgypt] = useState<RadioStationDTO[]>([]);
   const [arabic, setArabic] = useState<RadioStationDTO[]>([]);
@@ -57,7 +58,7 @@ function RadioPageInner() {
     setError(null);
     const params = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : tag ? `?tag=${encodeURIComponent(tag)}` : "";
     const timer = setTimeout(() => {
-      void fetch(`/api/radio${params}`)
+      void localFetch(`/api/radio${params}`)
         .then((r) => r.json())
         .then((d: { egypt: RadioStationDTO[]; arabic?: RadioStationDTO[]; quran?: RadioStationDTO[]; culture?: RadioStationDTO[]; world: RadioStationDTO[]; error?: string }) => {
           setEgypt(d.egypt ?? []);
@@ -75,12 +76,12 @@ function RadioPageInner() {
               setTimeout(() => {
                 document.getElementById(`station-${st.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
               }, 150);
-              toast(`${st.name}`, { description: t("listenLive"), action: { label: "▶", onClick: () => playStation(st) } });
+              toast(`${st.name}`, { description: t("listenLive"), action: { label: "▶", onClick: () => playRef.current(st) } });
             } else {
               // not in the lists → fetch by uuid
-              void fetch(`/api/radio?uuid=${encodeURIComponent(deepStation)}`).then((r) => r.json()).then((dd: { egypt: RadioStationDTO[]; world: RadioStationDTO[] }) => {
+              void localFetch(`/api/radio?uuid=${encodeURIComponent(deepStation)}`).then((r) => r.json()).then((dd: { egypt: RadioStationDTO[]; world: RadioStationDTO[] }) => {
                 const found = [...(dd.egypt ?? []), ...(dd.world ?? [])][0];
-                if (found) toast(found.name, { description: t("listenLive"), action: { label: "▶", onClick: () => playStation(found) } });
+                if (found) toast(found.name, { description: t("listenLive"), action: { label: "▶", onClick: () => playRef.current(found) } });
               }).catch(() => {});
             }
           }
@@ -91,7 +92,7 @@ function RadioPageInner() {
         });
     }, q ? 250 : 0);
     return () => clearTimeout(timer);
-  }, [q, tag]);
+  }, [q, tag, deepStation, t]);
 
   const currentStation = useMemo(() => {
     if (!current || current.source !== "radio") return null;
@@ -107,6 +108,7 @@ function RadioPageInner() {
     playTrackNow(track);
     toast(`${t("listenLive")}: ${s.name}`, { description: `${s.country} · ${s.codec} ${s.bitrate ? s.bitrate + " kbps" : ""}` });
   };
+  playRef.current = playStation;
 
   const Card = ({ s, rank }: { s: RadioStationDTO; rank: number }) => {
     const active = current?.source === "radio" && current.sourceId === s.id;
@@ -123,7 +125,6 @@ function RadioPageInner() {
         )}
       >
         <span className="relative shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={s.coverUrl}
             alt=""
@@ -204,7 +205,6 @@ function RadioPageInner() {
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">{t("nowOnAir")}</p>
           {currentStation ? (
             <div className="flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={currentStation.coverUrl} alt="" className="size-16 rounded-xl bg-white/5 object-cover" />
               <div className="min-w-0">
                 <p className="flex items-center gap-2 truncate text-sm font-bold">

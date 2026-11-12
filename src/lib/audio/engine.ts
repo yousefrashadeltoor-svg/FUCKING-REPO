@@ -25,8 +25,7 @@
 import { clamp, EQ_BAND_FREQUENCIES } from "@/lib/utils";
 import type { TrackDTO } from "@/lib/types";
 import { YouTubeBridge } from "./youtube-bridge";
-import { nativePlayback } from "@/lib/platform/native";
-import { apiUrl } from "@/lib/api-base";
+import { nativePlayback, isNativeHost, type NativeQueueItem } from "@/lib/platform/native";
 import { usePlayerStore } from "@/stores/player-store";
 
 /**
@@ -94,6 +93,7 @@ export class UniversalPlaybackEngine {
   private sleepFadeTimer: ReturnType<typeof setTimeout> | null = null;
   private lastDuration = 0;
   private endedGuard = false;
+  private nativeQueueSignature = "";
 
   /* ------------------------------- youtube -------------------------------- */
   private yt: YouTubeBridge | null = null;
@@ -306,28 +306,28 @@ export class UniversalPlaybackEngine {
    * has lined up, so "next"/"previous" work from the notification and widgets
    * even when the WebView is not running.
    */
-  private nativeQueueFrom(track: TrackDTO, overrideUri?: string): { id: string; uri: string; title: string; artist: string; album: string; artUri: string | null }[] {
-    const toItem = (t: TrackDTO, uri?: string) => ({
-      id: String(t.id),
-      uri: uri ?? t.streamUrl,
-      title: t.title,
-      artist: t.artistName,
-      album: t.albumTitle ?? "",
-      artUri: t.coverUrl && /^https?:/.test(t.coverUrl) ? t.coverUrl : null,
-    });
-    const out = [toItem(track, overrideUri)];
-    try {
-      const state = peekPlayerState();
-      const rest = (state?.queue ?? []).slice((state?.index ?? -1) + 1, (state?.index ?? -1) + 26);
-      for (const t of rest) {
-        if (!t || t.id === track.id) continue;
-        if (!/^(https?|content|file):/.test(t.streamUrl)) continue;
-        out.push(toItem(t));
-      }
-    } catch {
-      /* store not ready — the single track still plays */
-    }
-    return out;
+  private nativeQueueFrom(track: TrackDTO, overrideUri?: string): {items:NativeQueueItem[];index:number} {
+    const toItem = (t: TrackDTO, uri?: string) => {
+      const sourceUrl = t.source === "youtube" && t.sourceId ? `https://www.youtube.com/watch?v=${encodeURIComponent(t.sourceId)}` : t.streamUrl;
+      const resolve = /^(youtube|soundcloud|bandcamp|dailymotion|odysee)$/.test(t.source) && !/^content:/.test(t.streamUrl);
+      const rawUri=uri ?? t.streamUrl;
+      return { id:String(t.id), uri:resolve ? `donmuse-resolve:${sourceUrl}` : (/^(https?|content|file|donmuse-resolve):/.test(rawUri) ? rawUri : new URL(rawUri,window.location.origin).href), resolveUrl:resolve ? sourceUrl : undefined,
+        title:t.title, artist:t.artistName, album:t.albumTitle ?? "", artUri:t.coverUrl,
+        durationMs:Math.round(t.durationSec*1000), mime:t.mimeType, track:t };
+    };
+    const state = peekPlayerState();
+    const queue = state?.queue.length ? state.queue : [track];
+    const items = queue.filter(t => t.codec !== "iframe" || t.id === track.id).map(t => toItem(t, t.id === track.id ? overrideUri : undefined));
+    if (!items.some(t => t.id === String(track.id))) items.unshift(toItem(track, overrideUri));
+    const index=Math.max(0,items.findIndex(t=>t.id===String(track.id)));
+    return {items,index};
+  }
+  /** Queue edits reach the notification/widgets without restarting the song. */
+  syncNativeQueue(): void {
+    if(this.kind!=="native"||!this.current)return;
+    const q=this.nativeQueueFrom(this.current);const signature=JSON.stringify(q);
+    if(signature===this.nativeQueueSignature)return;
+    this.nativeQueueSignature=signature;nativePlayback.updateQueue(q.items,q.index);
   }
 
   private computeNormGain(track: TrackDTO): number {
@@ -354,6 +354,7 @@ export class UniversalPlaybackEngine {
 
     // Same source already loaded → just resume/restart, never a second player.
     if (this.loadedKey === key && this.current?.id === track.id) {
+      if (this.kind === "native") this.syncNativeQueue();
       if (autoplay) {
         if (this.kind === "native") nativePlayback.play();
         else if (this.kind === "youtube") this.yt?.play();
@@ -371,42 +372,19 @@ export class UniversalPlaybackEngine {
     this.lastEmittedPos = -1;
     this.emit("trackchange", track);
 
-    const useYouTube = track.source === "youtube" && track.codec === "iframe" && !!track.sourceId;
+    const useYouTube = track.source === "youtube" && !isNativeHost() && !!track.sourceId;
     const useNative = !useYouTube && nativePlayback.canHandle(track);
 
     if (useNative) {
-      // The WebView must never also play audio while ExoPlayer owns the session.
+      // ExoPlayer owns playback. Lazy native resolution keeps the next tracks
+      // working from notification/widgets even when the UI is not running.
       this.kind = "native";
       this.hardStopElements();
+      this.yt?.pause();
       this.stopTick();
-      // Catalog tracks are served by our own API: resolve a direct media URL so
-      // ExoPlayer (not the WebView) streams it — that is what keeps audio alive
-      // in the background, on the lock screen and in the widgets.
-      const needsResolve = track.id > 0 && !/^(content|file):\/\//.test(track.streamUrl);
-      if (needsResolve) {
-        void nativePlayback.resolve(track.id).then((res) => {
-          if (token !== this.loadToken) return; // a newer load took over
-          if (!res?.url && res?.embed) {
-            // No direct audio for this item (region-locked YouTube): fall back to
-            // the official embed so the user still hears the song.
-            const vid = res.embed.match(/embed\/([\w-]{6,})/)?.[1] ?? track.sourceId ?? null;
-            this.kind = "youtube";
-            const yt = this.getYT();
-            yt.ensurePlayer();
-            if (vid) yt.loadVideo(vid, autoplay);
-            this.startTick();
-            return;
-          }
-          nativePlayback.load(track, {
-            autoplay,
-            startAt,
-            uri: res?.url || track.streamUrl,
-            queue: this.nativeQueueFrom(track, res?.url),
-          });
-        });
-      } else {
-        nativePlayback.load(track, { autoplay, startAt, queue: this.nativeQueueFrom(track) });
-      }
+      const q=this.nativeQueueFrom(track);this.nativeQueueSignature=JSON.stringify(q);
+      nativePlayback.setVolume(this.muted?0:this.volume);nativePlayback.setRate(this.rate);
+      nativePlayback.load(track, { autoplay, startAt, queue:q.items, queueIndex:q.index });
       this.startTick();
       return;
     }
@@ -455,7 +433,7 @@ export class UniversalPlaybackEngine {
     this.elGains[next].gain.value = 1;
 
     try {
-      el.src = apiUrl(track.streamUrl);
+      el.src = track.streamUrl;
       el.playbackRate = this.rate;
       if (startAt > 0) el.currentTime = startAt;
       el.load();
@@ -554,6 +532,7 @@ export class UniversalPlaybackEngine {
     this.hardStopElements();
     this.kind = "audio";
     this.loadedKey = null;
+    this.nativeQueueSignature = "";
     this.current = null;
     this.lastDuration = 0;
     this.lastEmittedPos = -1;
@@ -692,7 +671,7 @@ export class UniversalPlaybackEngine {
     if (idle.src !== url) {
       try {
         idle.preload = "auto";
-        idle.src = apiUrl(url);
+        idle.src = url;
         idle.load();
       } catch {
         /* ignore */

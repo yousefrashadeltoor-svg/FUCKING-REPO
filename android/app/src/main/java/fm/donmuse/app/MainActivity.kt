@@ -1,229 +1,120 @@
 package fm.donmuse.app
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
+import android.view.ViewGroup
 import android.webkit.ConsoleMessage
+import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.ListenableFuture
+import androidx.webkit.WebViewAssetLoader
 import fm.donmuse.app.bridge.NativeBridge
 import fm.donmuse.app.bridge.NativeEvents
-import fm.donmuse.app.bridge.PendingPermissions
-import fm.donmuse.app.playback.PlaybackService
+import java.io.ByteArrayInputStream
+import java.security.SecureRandom
 
-/**
- * DON MUSE — Android host.
- *
- * This is NOT a "website in a box": the WebView renders the UI (the same UI the
- * web app uses) while everything the platform can do better is delegated to
- * real Android code through the `DonMuseNative` bridge:
- *
- *   • ExoPlayer + MediaSessionService  → background playback, media-style
- *     notification (play/pause/prev/next), lock-screen + Bluetooth controls,
- *     widgets, gapless playback, audio focus, becoming-noisy handling.
- *   • MediaStore                        → the device library, read in place.
- *   • SharedPreferences (app-private)   → all app data, invisible to the user
- *     and to other apps. No IndexedDB for app data.
- *   • DownloadManager / MediaStore      → saving audio into the Music library.
- *   • WorkManager                       → release notifications.
- */
+/** Native Android capabilities + the exact, locally bundled DON MUSE interface.
+ * There is intentionally no hosted-site URL or remote fallback. */
 class MainActivity : ComponentActivity() {
-
-    private lateinit var webView: WebView
-    private lateinit var bridge: NativeBridge
-    private var controllerFuture: ListenableFuture<MediaController>? = null
-
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result ->
-        bridge.onPermissionsResult(
-            result.filterValues { it }.keys.toList(),
-            result.filterValues { !it }.keys.toList(),
-        )
-    }
-
-    private val manageStorageLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { bridge.onManageStorageResult(true) }
+    private lateinit var web:WebView
+    private lateinit var bridge:NativeBridge
+    private lateinit var loader:WebViewAssetLoader
+    @Volatile var trustedDocument=false;private set
+    private var pendingDeepLink:String?=null
+    private val token=ByteArray(32).also{SecureRandom().nextBytes(it)}.joinToString(""){"%02x".format(it)}
+    private val permissions=registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){bridge.onPermissionsResult()}
+    private val documents=registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){bridge.onDocuments(it)}
+    private val image=registerForActivityResult(ActivityResultContracts.OpenDocument()){bridge.onImage(it)}
+    private val write=registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()){bridge.onWriteResult(it.resultCode==RESULT_OK)}
 
     @SuppressLint("SetJavaScriptEnabled")
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState:Bundle?){
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
+        WindowCompat.setDecorFitsSystemWindows(window,false)
+        WindowInsetsControllerCompat(window,window.decorView).apply{isAppearanceLightStatusBars=false;isAppearanceLightNavigationBars=false}
+        check(runCatching{assets.open("www/index.html").close()}.isSuccess){"Bundled UI is missing. Build with npm run bundle."}
+        loader=WebViewAssetLoader.Builder().setDomain("appassets.androidplatform.net").addPathHandler("/assets/",WebViewAssetLoader.AssetsPathHandler(this)).build()
+        web=WebView(this).apply{setBackgroundColor(0xff05060a.toInt());layoutParams=ViewGroup.LayoutParams(-1,-1)}
+        setContentView(web)
+        bridge=NativeBridge(this,token,permissions,documents,image,write)
+        NativeEvents.attach(this,web)
+        web.addJavascriptInterface(bridge,"DonMuseNative")
+        CookieManager.getInstance().setAcceptThirdPartyCookies(web,false)
+        web.settings.apply{
+            javaScriptEnabled=true;domStorageEnabled=true;databaseEnabled=true
+            mediaPlaybackRequiresUserGesture=false;allowFileAccess=false;allowContentAccess=true
+            mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            cacheMode=WebSettings.LOAD_DEFAULT;useWideViewPort=true;loadWithOverviewMode=true
+            builtInZoomControls=false;displayZoomControls=false;textZoom=100;safeBrowsingEnabled=true
+            setSupportMultipleWindows(false);javaScriptCanOpenWindowsAutomatically=false
         }
-
-        // Connect a controller so the UI can read/replace the real native queue.
-        val token = SessionToken(this, android.content.ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, token).buildAsync()
-
-        webView = WebView(this).apply {
-            setBackgroundColor(0xFF05060A.toInt())
-            setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        web.webChromeClient=object:WebChromeClient(){
+            override fun onConsoleMessage(m:ConsoleMessage):Boolean{android.util.Log.d("DonMuseUI","${m.message()} @${m.lineNumber()}");return true}
+            override fun onPermissionRequest(request:PermissionRequest){request.deny()}
         }
-        setContentView(webView)
-
-        bridge = NativeBridge(this, webView, permissionLauncher, manageStorageLauncher)
-        webView.addJavascriptInterface(bridge, "DonMuseNative")
-        NativeEvents.attach(this, webView)
-
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            mediaPlaybackRequiresUserGesture = false
-            cacheMode = WebSettings.LOAD_DEFAULT
-            loadsImagesAutomatically = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            allowFileAccess = true
-            allowContentAccess = true
-            useWideViewPort = true
-            loadWithOverviewMode = true
-            builtInZoomControls = false
-            displayZoomControls = false
-            textZoom = 100
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
-        }
-
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onConsoleMessage(m: ConsoleMessage): Boolean {
-                android.util.Log.d("DonMuseWeb", "${m.message()} @${m.lineNumber()}")
-                return true
-            }
-
-            override fun onPermissionRequest(request: PermissionRequest) = request.grant(request.resources)
-        }
-
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val url = request.url
-                val host = url.host ?: return false
-                if (isInternalHost(host)) return false
-                return try {
-                    startActivity(Intent(Intent.ACTION_VIEW, url))
-                    true
-                } catch (_: Exception) {
-                    false
+        web.webViewClient=object:WebViewClient(){
+            override fun shouldInterceptRequest(view:WebView,request:WebResourceRequest):WebResourceResponse?{
+                val uri=request.url
+                if(!DonMuseApp.isLocal(uri))return null
+                val response=loader.shouldInterceptRequest(uri)
+                val path=uri.path.orEmpty()
+                val isIndex=path.endsWith("/index.html")||path.endsWith("/assets/www/")||(!path.substringAfterLast('/').contains('.')&&!path.contains("/assets/www/assets/"))
+                if(request.isForMainFrame&&isIndex){
+                    val html=assets.open("www/index.html").bufferedReader().use{it.readText()}
+                    val bootstrap="<script>window.__DM_NATIVE_TOKEN__=${org.json.JSONObject.quote(token)};document.documentElement.dataset.host='android';</script>"
+                    val injected=html.replaceFirst("<head>","<head>$bootstrap")
+                    return WebResourceResponse("text/html","UTF-8",200,"OK",securityHeaders(),ByteArrayInputStream(injected.toByteArray()))
                 }
+                return response
             }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                // Lets the design system apply Android-specific safe areas and
-                // disables web-only paths (IndexedDB storage, file pickers…).
-                view?.evaluateJavascript(
-                    "document.documentElement.dataset.host='android';",
-                    null,
-                )
+            override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean{
+                val uri=request.url;if(DonMuseApp.isLocal(uri))return true.also{if(request.isForMainFrame)loadRoute(uri)}
+                if(request.isForMainFrame&&uri.scheme in setOf("http","https")){runCatching{startActivity(Intent(Intent.ACTION_VIEW,uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))};return true}
+                return uri.scheme !in setOf("http","https","blob","data","about")
             }
-        }
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                // Ask the SPA to close a sheet / go back one history entry.
-                webView.evaluateJavascript(
-                    "(function(){if(window.__donmuseBack&&window.__donmuseBack()){return '1'}return '0'})()",
-                ) { handled ->
-                    if (handled != "\"1\"") {
-                        if (webView.canGoBack()) webView.goBack() else finish()
-                    }
-                }
+            override fun onPageStarted(view:WebView,url:String?,favicon:android.graphics.Bitmap?){trustedDocument=url?.let{DonMuseApp.isLocal(Uri.parse(it))}==true}
+            override fun onPageFinished(view:WebView,url:String?){
+                if(!trustedDocument)return
+                view.evaluateJavascript("document.documentElement.dataset.host='android';window.__donmuseNativeEvent&&window.__donmuseNativeEvent('ready','{}');",null)
+                flushDeepLink();applyInsets()
             }
-        })
-
-        requestStartupPermissions()
-        webView.loadUrl(firstUrl(intent))
-    }
-
-    private fun isInternalHost(host: String): Boolean =
-        host == DonMuseApp.WEB_HOST || host.endsWith(".donmuse.app") || host == "localhost"
-
-    private fun firstUrl(intent: Intent?): String {
-        val data: Uri? = intent?.data ?: return DonMuseApp.startUrl(this)
-        return when {
-            data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
-            data.scheme?.startsWith("content") == true ->
-                DonMuseApp.routeUrl(this, "my-music") + "?open=" + Uri.encode(data.toString())
-            else -> data.toString()
+            override fun onReceivedError(view:WebView,request:WebResourceRequest,error:WebResourceError){if(request.isForMainFrame)android.util.Log.e("DonMuseUI","Bundled page failed: ${error.description}")}
         }
+        onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true){override fun handleOnBackPressed(){web.evaluateJavascript("!!(window.__donmuseBack&&window.__donmuseBack())"){handled->if(handled!="true"){if(web.canGoBack())web.goBack()else moveTaskToBack(true)}}}})
+        pendingDeepLink=routeFromIntent(intent)
+        web.loadUrl(DonMuseApp.START_URL)
+        applyInsets()
     }
-
-    /** Android 13+ media/notification permissions + storage on older versions. */
-    private fun requestStartupPermissions() {
-        val wanted = mutableListOf(Manifest.permission.POST_NOTIFICATIONS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            wanted += Manifest.permission.READ_MEDIA_AUDIO
-            wanted += Manifest.permission.READ_MEDIA_VIDEO
-            wanted += Manifest.permission.READ_MEDIA_IMAGES
-        } else {
-            wanted += Manifest.permission.READ_EXTERNAL_STORAGE
+    private fun securityHeaders()=mapOf("Cache-Control" to "no-store","X-Content-Type-Options" to "nosniff","Cross-Origin-Opener-Policy" to "same-origin")
+    private fun applyInsets(){if(!::web.isInitialized)return;WindowInsetsCompat.Type.systemBars().let{type->val insets=WindowInsetsCompat.toWindowInsetsCompat(window.decorView.rootWindowInsets ?: return,web);val bars=insets.getInsets(type or WindowInsetsCompat.Type.displayCutout());val density=resources.displayMetrics.density;web.evaluateJavascript("document.documentElement.style.setProperty('--dm-safe-top','${bars.top/density}px');document.documentElement.style.setProperty('--dm-safe-bottom','${bars.bottom/density}px');",null)}}
+    private fun loadRoute(uri:Uri){val path=uri.path.orEmpty().removePrefix("/assets/www/");web.loadUrl(DonMuseApp.routeUrl(path)+(uri.query?.let{"?$it"} ?: ""))}
+    private fun routeFromIntent(i:Intent?):String?{
+        val data=i?.data
+        if(data!=null){
+            if(data.scheme=="donmuse"){val route=(data.host.orEmpty()+data.path.orEmpty()).trim('/');return "/$route"+(data.query?.let{"?$it"} ?: "")}
+            if(i.action==Intent.ACTION_VIEW&&data.scheme in setOf("content","file"))return "/my-music?open=${Uri.encode(data.toString())}"
         }
-        val missing = wanted.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isNotEmpty()) {
-            PendingPermissions.pending = missing.toTypedArray()
-            permissionLauncher.launch(missing.toTypedArray())
-        }
+        if(i?.action==Intent.ACTION_SEND)return i.getStringExtra(Intent.EXTRA_TEXT)?.let{"/downloads?link=${Uri.encode(it)}"}
+        return null
     }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        val data: Uri? = intent.data ?: return
-        val target = when {
-            data.scheme == "donmuse" -> DonMuseApp.routeUrl(this, data.path.orEmpty())
-            data.scheme?.startsWith("content") == true ->
-                DonMuseApp.routeUrl(this, "my-music") + "?open=" + Uri.encode(data.toString())
-            else -> data.toString()
-        }
-        webView.loadUrl(target)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        webView.onResume()
-        // Re-sync the UI with whatever the notification/widget did while away.
-        webView.evaluateJavascript(
-            "window.__donmuseResync&&window.__donmuseResync()",
-            null,
-        )
-    }
-
-    override fun onPause() {
-        // Playback deliberately keeps running: it lives in the foreground
-        // service, not in the WebView.
-        webView.onPause()
-        super.onPause()
-    }
-
-    override fun onDestroy() {
-        controllerFuture?.let { MediaController.releaseFuture(it) }
-        super.onDestroy()
-    }
-
-    @Suppress("unused")
-    private fun applyInsets() {
-        WindowCompat.getInsetsController(window, window.decorView)
-            .hide(WindowInsetsCompat.Type.systemBars())
-    }
+    private fun flushDeepLink(){val route=pendingDeepLink ?: return;pendingDeepLink=null;web.evaluateJavascript("window.__donmuseNavigate&&window.__donmuseNavigate(${org.json.JSONObject.quote(route)});",null)}
+    fun onUiReady(){flushDeepLink()}
+    override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);pendingDeepLink=routeFromIntent(intent);if(trustedDocument)flushDeepLink()}
+    override fun onResume(){super.onResume();if(::web.isInitialized){web.onResume();web.evaluateJavascript("window.__donmuseResync&&window.__donmuseResync();",null)}}
+    override fun onPause(){if(::web.isInitialized)web.onPause();super.onPause()}
+    override fun onDestroy(){NativeEvents.detach(web);web.removeJavascriptInterface("DonMuseNative");web.destroy();super.onDestroy()}
 }

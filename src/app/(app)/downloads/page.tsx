@@ -1,101 +1,33 @@
-"use client";
-
-// Downloads Center — batch full tracks / clips / surahs with live status.
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Download, Play, Trash2, CheckCircle2, AlertCircle, Loader2, X, Inbox, Film } from "lucide-react";
-import { useDownloadStore } from "@/stores/download-store";
+import { Download, Play, Trash2, CheckCircle2, AlertCircle, Loader2, X, Inbox, Film, Link2, Pause, RotateCw, ClipboardPaste, HardDrive } from "lucide-react";
+import { toast } from "sonner";
+import { useDownloadStore, downloadTrackForOffline } from "@/stores/download-store";
+import { DownloadMenu } from "@/components/player/DownloadMenu";
+import { playTrackNow } from "@/lib/player-actions";
+import { makeTrack, stableId, sourceFromUrl } from "@/lib/local/model";
+import { isNativeHost } from "@/lib/platform/native";
 import { useT } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import type { TrackDTO } from "@/lib/types";
 
-const PRESETS = [
-  { id: "mp3-320", label: "MP3 320k" },
-  { id: "mp3-256", label: "MP3 256k" },
-  { id: "mp3-192", label: "MP3 192k" },
-  { id: "mp3-128", label: "MP3 128k" },
-  { id: "m4a-256", label: "AAC 256k" },
-  { id: "opus-160", label: "Opus 160k" },
-  { id: "flac", label: "FLAC" },
-  { id: "alac", label: "ALAC" },
-];
-
-export default function DownloadsPage() {
-  const t = useT();
-  const { items, running, run, remove, clear, clearDone } = useDownloadStore();
-  const [preset, setPreset] = useState("mp3-320");
-  const queued = items.filter((i) => i.status === "queued").length;
-  const done = items.filter((i) => i.status === "done").length;
-
-  useEffect(() => {
-    if (running) void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
-
-  return (
-    <div className="mx-auto max-w-4xl p-4 md:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-3xl font-black tracking-tight"><Download className="size-7 text-[#1DB954]" /> {t("downloadsTitle")}</h1>
-          <p className="mt-1 text-sm text-white/45">{t("downloadsSub")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select value={preset} onChange={(e) => setPreset(e.target.value)} className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white/80 outline-none" aria-label="Default quality">
-            {PRESETS.map((p) => <option key={p.id} value={p.id} className="bg-neutral-900">{p.label}</option>)}
-          </select>
-          <button onClick={() => void run()} disabled={queued === 0 || running} className="flex items-center gap-2 rounded-full bg-[#1DB954] px-5 py-2.5 text-sm font-bold text-black transition-transform hover:scale-105 disabled:opacity-40">
-            {running ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} {t("downloadAll")} {queued ? `(${queued})` : ""}
-          </button>
-        </div>
-      </div>
-
-      {/* how to add */}
-      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs text-white/45">
-        <Inbox className="size-4 text-white/40" />
-        <span>{t("addBatch")}: </span>
-        <Link href="/search" className="rounded-full border border-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/8">Search</Link>
-        <Link href="/library" className="rounded-full border border-white/10 px-3 py-1 font-semibold text-white/70 hover:bg-white/8">Library</Link>
-        <span className="text-white/25">→</span>
-        <span>open a song&apos;s menu (⋯) → <b className="text-[#1DB954]">{t("addBatch")}</b>, or tap “{t("downloadAll")}” on a playlist/artist page.</span>
-      </div>
-
-      {items.length === 0 ? (
-        <div className="mt-10 grid place-items-center rounded-2xl border border-dashed border-white/10 py-16 text-center">
-          <Inbox className="mb-3 size-10 text-white/20" />
-          <p className="text-sm text-white/40">{t("batchEmpty")}</p>
-        </div>
-      ) : (
-        <div className="mt-5 flex flex-col gap-2">
-          <div className="flex items-center justify-between px-1 text-xs text-white/40">
-            <span>{items.length} items · {done} {t("quranComplete").toLowerCase()}</span>
-            <div className="flex gap-2">
-              <button onClick={clearDone} className="rounded-full border border-white/10 px-3 py-1 font-semibold text-white/60 hover:bg-white/8">Clear done</button>
-              <button onClick={clear} className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 font-semibold text-white/60 hover:bg-white/8"><X className="size-3" /> Clear all</button>
-            </div>
-          </div>
-          {items.map((it) => (
-            <div key={it.id} className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3" dir="ltr">
-              {it.cover ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={it.cover} alt="" className="size-12 shrink-0 rounded-lg object-cover" />
-              ) : (
-                <span className="grid size-12 shrink-0 place-items-center rounded-lg bg-white/5"><Film className="size-5 text-white/40" /></span>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-bold">{it.title}</p>
-                <p className="truncate text-[11px] text-white/45">{it.artist} · {PRESETS.find((p) => p.id === it.preset)?.label ?? it.preset} · {it.kind}</p>
-                {it.status === "error" && <p className="truncate text-[10px] text-rose">{it.error}</p>}
-              </div>
-              {it.status === "queued" && <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-bold text-white/60">QUEUED</span>}
-              {it.status === "working" && <Loader2 className="size-5 animate-spin text-[#1DB954]" />}
-              {it.status === "done" && (
-                <span className="flex items-center gap-1 rounded-full bg-[#1DB954]/15 px-2.5 py-1 text-[10px] font-bold text-[#1DB954]"><CheckCircle2 className="size-3.5" />{it.size ? `${(it.size / 1e6).toFixed(1)} MB` : "OK"}</span>
-              )}
-              {it.status === "error" && <AlertCircle className="size-5 text-rose" />}
-              <button onClick={() => remove(it.id)} className="grid size-9 shrink-0 place-items-center rounded-full text-white/40 hover:bg-white/10 hover:text-rose" aria-label="Remove"><Trash2 className="size-4" /></button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+export default function DownloadsPage(){
+  const t=useT();const params=useSearchParams();const {items,running,init,run,remove,clear,clearDone,action}=useDownloadStore();
+  const [link,setLink]=useState("");const [imported,setImported]=useState<TrackDTO|null>(null);
+  const queued=items.filter(i=>i.status==="queued"||i.status==="paused").length;const done=items.filter(i=>i.status==="done").length;
+  useEffect(()=>{void init();},[init]);
+  useEffect(()=>{const value=params.get("link");if(value)setLink(value);},[params]);
+  const inspect=()=>{try{const u=new URL(link.trim());const source=sourceFromUrl(u.href);if(!source)throw new Error();setImported(makeTrack({title:u.hostname,artistName:"رابط مباشر",source,sourceId:u.href,streamUrl:u.href,id:stableId(u.href),codec:source==="youtube"?"native":"audio"}));}catch{toast.error("الصق رابط HTTP/HTTPS صحيحًا للمقطع أو ملف الصوت/الفيديو.");}};
+  const play=async(id:string)=>{const item=items.find(x=>x.id===id);if(!item)return;const track=await downloadTrackForOffline(item);if(track)playTrackNow(track);else toast.error("الملف غير موجود. أعد تنزيله أو افتحه من مجلد Music/DON MUSE.");};
+  return <div className="mx-auto max-w-5xl p-4 md:p-6">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><h1 className="flex items-center gap-2 text-3xl font-black tracking-tight"><Download className="size-7 text-[var(--app-accent)]"/>{t("downloadsTitle")}</h1><p className="mt-2 text-sm text-white/55">تنزيل حقيقي إلى الجهاز، مع التقدم وإعادة المحاولة والحفظ في Music / Movies.</p></div><div className="flex gap-2"><button onClick={()=>void run()} disabled={!queued||running} className="flex items-center gap-2 rounded-full bg-[var(--app-accent)] px-5 py-3 text-sm font-bold text-black disabled:opacity-40">{running?<Loader2 className="size-4 animate-spin"/>:<Download className="size-4"/>}{t("downloadAll")} {queued?`(${queued})`:""}</button></div></div>
+    <section className="glass-panel mt-5 rounded-2xl border border-white/10 p-4 md:p-5"><h2 className="flex items-center gap-2 text-sm font-bold"><Link2 className="size-4 text-[var(--app-accent)]"/>تحميل من رابط</h2><p className="mt-1 text-xs leading-6 text-white/50">الصق رابط فيديو أو صوت. في APK تُفحص الصيغ المتاحة فعليًا على الجهاز؛ لا توجد قائمة جودات وهمية.</p><form onSubmit={e=>{e.preventDefault();inspect();}} className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={link} onChange={e=>setLink(e.target.value)} type="url" dir="ltr" placeholder="https://… أو رابط YouTube / SoundCloud" aria-label="رابط التحميل" className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/30 px-4 py-3 font-mono text-sm outline-none focus:border-[var(--app-accent)]"/><button type="button" onClick={()=>void navigator.clipboard.readText().then(setLink).catch(()=>toast.error("الصق الرابط يدويًا؛ لم تُمنح صلاحية الحافظة."))} className="flex items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-xs"><ClipboardPaste className="size-4"/>لصق</button><button type="submit" disabled={!link.trim()} className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-black disabled:opacity-40">عرض الصيغ والملفات</button></form><p className="mt-3 text-[11px] leading-5 text-white/40">{isNativeHost()?"التحويل والقص يعملان محليًا عبر FFmpeg. الروابط المحمية أو التي تتطلب حسابًا قد ترفض المصدر تنزيلها.":"في المتصفح: تنزيل مباشر فقط عند سماح CORS. استخدم APK لحل روابط المنصات والتحويل."}</p></section>
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-white/[.06] bg-white/[.02] p-4 text-xs text-white/55"><Inbox className="size-4"/><span>{t("addBatch")}:</span><Link href="/search" className="rounded-full border border-white/10 px-3 py-1.5 font-semibold">{t("search")}</Link><Link href="/my-music" className="rounded-full border border-white/10 px-3 py-1.5 font-semibold">{t("myMusic")}</Link><Link href="/quran" className="rounded-full border border-white/10 px-3 py-1.5 font-semibold">{t("quran")}</Link></div>
+    {!items.length?<div className="mt-8 grid place-items-center rounded-2xl border border-dashed border-white/15 py-16 text-center"><Inbox className="mb-3 size-10 text-white/30"/><p className="text-sm text-white/55">{t("batchEmpty")}</p><p className="mt-2 text-xs text-white/35">الصق رابطًا أعلاه أو أضف مقطعًا من قائمة ⋯.</p></div>:<div className="mt-6 flex flex-col gap-3"><div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-white/50"><span>{items.length} ملف · {done} مكتمل</span><div className="flex gap-2"><button onClick={clearDone} className="rounded-full border border-white/10 px-3 py-1.5">مسح المكتمل من القائمة</button><button onClick={()=>{if(window.confirm("إلغاء جميع التنزيلات وإزالة القائمة؟ الملفات المحفوظة لن تُحذف."))clear();}} className="flex items-center gap-1 rounded-full border border-white/10 px-3 py-1.5"><X className="size-3"/>مسح الكل</button></div></div>
+      {items.map(it=><article key={it.id} className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4"><div className="flex items-center gap-3">{it.cover?<img src={it.cover} alt="" className="size-16 shrink-0 rounded-xl object-cover"/>:<span className="grid size-16 shrink-0 place-items-center rounded-xl bg-white/5"><Film className="size-6 text-white/50"/></span>}<div className="min-w-0 flex-1"><h3 className="truncate text-sm font-bold">{it.title}</h3><p className="mt-1 truncate text-xs text-white/50">{it.artist} · {it.preset} · {it.filename.split(".").pop()?.toUpperCase()}</p><p className="mt-1 text-[11px] text-white/45">{it.status==="done"?<span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 className="size-3.5"/>محفوظ · {((it.size??it.received)/1e6).toFixed(1)} MB</span>:it.status==="error"?<span className="text-rose-300">{it.error}</span>:it.status==="paused"?"متوقف مؤقتًا":it.status==="working"?`${it.progress?`${it.progress}%`:"جارٍ التنزيل"} · ${(it.received/1e6).toFixed(1)} MB${it.total?` / ${(it.total/1e6).toFixed(1)} MB`:""}`:"في الانتظار"}</p></div>{it.status==="working"&&<Loader2 className="size-5 shrink-0 animate-spin text-[var(--app-accent)]"/>}{it.status==="error"&&<AlertCircle className="size-5 shrink-0 text-rose-300"/>}</div>
+        {(it.status==="working"||it.status==="paused")&&<div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-valuenow={it.progress} aria-valuemin={0} aria-valuemax={100}><div className="h-full rounded-full bg-[var(--app-accent)] transition-[width]" style={{width:`${it.progress}%`}}/></div>}
+        <div className="mt-3 flex flex-wrap gap-2">{it.status==="done"&&<button onClick={()=>void play(it.id)} className="flex items-center gap-1.5 rounded-full bg-[var(--app-accent)]/15 px-3 py-2 text-xs font-bold text-[var(--app-accent)]"><Play className="size-3.5"/>تشغيل محلي</button>}{it.status==="working"&&<button onClick={()=>void action(it.id,"pause")} className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs"><Pause className="size-3.5"/>إيقاف مؤقت</button>}{(it.status==="paused"||it.status==="queued")&&<button onClick={()=>void action(it.id,"resume")} className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs"><Play className="size-3.5"/>متابعة</button>}{it.status==="error"&&<button onClick={()=>void action(it.id,"retry")} className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-2 text-xs"><RotateCw className="size-3.5"/>إعادة المحاولة</button>}<button onClick={()=>remove(it.id)} className="ms-auto flex items-center gap-1.5 rounded-full px-3 py-2 text-xs text-white/45 hover:bg-rose-500/10 hover:text-rose-300"><Trash2 className="size-3.5"/>{it.status==="working"?"إلغاء":"إزالة"}</button></div>
+      </article>)}<p className="flex items-center gap-2 px-1 text-[11px] text-white/40"><HardDrive className="size-3.5"/>إزالة عنصر من القائمة لا تحذف ملفًا محفوظًا في مدير الملفات.</p></div>}
+    {imported&&<div className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-3 backdrop-blur-sm" onClick={()=>setImported(null)}><DownloadMenu track={imported} onClose={()=>setImported(null)}/></div>}
+  </div>;
 }

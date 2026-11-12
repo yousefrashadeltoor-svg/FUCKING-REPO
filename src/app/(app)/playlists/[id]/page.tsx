@@ -1,34 +1,7 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getDemoUser, getPlaylistDetail } from "@/lib/server/queries";
-import { TrackList } from "@/components/tracks/TrackList";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { PlaylistHeader } from "@/components/playlists/PlaylistHeader";
-
-export const dynamic = "force-dynamic";
-
-type Ctx = { params: Promise<{ id: string }> };
-
-export default async function PlaylistPage({ params }: Ctx) {
-  const { id } = await params;
-  const pid = Number(id);
-  if (!Number.isInteger(pid)) notFound();
-  const user = await getDemoUser();
-  const detail = await getPlaylistDetail(pid, user.id);
-  if (!detail) notFound();
-
-  return (
-    <div className="p-4 md:p-6">
-      <PlaylistHeader playlist={detail} />
-      <div className="mt-6">
-        <TrackList
-          tracks={detail.tracks}
-          onRemove={undefined}
-        />
-      </div>
-      <p className="mt-6 px-1 text-xs text-white/30">
-        <Link href="/library" className="hover:text-white/60 hover:underline">{detail.ownerName}</Link>
-        {detail.collaborative && " · collaborative"}
-      </p>
-    </div>
-  );
-}
+import { TrackList } from "@/components/tracks/TrackList";
+import { localFetch } from "@/lib/local/client";
+import type { PlaylistDetailDTO } from "@/lib/types";
+export default function Page(){const {id}=useParams<{id:string}>();const [data,setData]=useState<PlaylistDetailDTO|null>(null);const load=useCallback(()=>{void localFetch(`/api/playlists/${id}`).then(async r=>{if(r.ok)setData(await r.json() as PlaylistDetailDTO);});},[id]);useEffect(()=>{load();window.addEventListener("donmuse:refresh",load);return()=>window.removeEventListener("donmuse:refresh",load);},[load]);return data?<div className="p-4 md:p-6"><PlaylistHeader playlist={data}/><div className="mt-6"><TrackList tracks={data.tracks}/></div></div>:<p className="p-8 text-center text-white/50">القائمة غير موجودة.</p>;}

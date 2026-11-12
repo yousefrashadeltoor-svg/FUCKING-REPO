@@ -1,4 +1,3 @@
-"use client";
 
 // One-directional page transition — no more "appears from the left then jumps
 // to the right". The key is the pathname, so the animation runs once per route

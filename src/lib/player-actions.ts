@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Gesture-safe playback actions.
@@ -22,7 +22,7 @@ async function resolveMajor(track: TrackDTO): Promise<TrackDTO> {
   let vid = resolveCache.get(track.id);
   if (vid === undefined) {
     try {
-      const r = await fetch(`/api/tracks/${track.id}/resolve`);
+      const r = await localFetch(`/api/tracks/${track.id}/resolve`);
       const d = (await r.json()) as { youtubeId?: string | null };
       vid = d.youtubeId ?? null;
     } catch {

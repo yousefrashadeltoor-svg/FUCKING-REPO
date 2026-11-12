@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Artist profile — OFFICIAL account: banner + avatar from the platform,
@@ -14,7 +14,7 @@ import { enqueueTrack } from "@/stores/download-store";
 import { toast } from "sonner";
 import { links, shareUrl } from "@/lib/share";
 import { motion } from "framer-motion";
-import { cn, formatCount, formatTime } from "@/lib/utils";
+import { cn, formatCount } from "@/lib/utils";
 import { useT, type DictKey } from "@/lib/i18n";
 import { BrandIcon, BRAND_LABEL } from "@/components/brand/BrandIcon";
 import { FollowButton } from "./FollowButton";
@@ -41,7 +41,7 @@ export function ArtistProfile({ artistId, initial }: { artistId: number; initial
   const [tab, setTab] = useState<TabId>("top");
 
   useEffect(() => {
-    void fetch(`/api/artists/${artistId}/profile`)
+    void localFetch(`/api/artists/${artistId}/profile`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: ArtistProfileDTO | null) => {
         if (d) setData(d);
@@ -61,7 +61,6 @@ export function ArtistProfile({ artistId, initial }: { artistId: number; initial
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((v, i) => (
         <button key={v.track.id} onClick={() => playQueueNow(items.map((x) => x.track), i)} className="group relative overflow-hidden rounded-2xl bg-white/[0.03] text-start ring-1 ring-white/[0.06] transition-colors hover:bg-white/[0.07]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={v.track.sourceId ? `https://i.ytimg.com/vi/${v.track.sourceId}/hq720.jpg` : v.track.coverUrl ?? ""} alt="" className="aspect-video w-full object-cover" onError={(e) => { if (v.track.sourceId) (e.currentTarget as HTMLImageElement).src = `https://i.ytimg.com/vi/${v.track.sourceId}/hqdefault.jpg`; }} />
           <span className="absolute inset-0 grid place-items-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
             <span className="grid size-14 place-items-center rounded-full bg-white text-black"><Play className="ms-0.5 size-6 fill-black" /></span>
@@ -83,14 +82,14 @@ export function ArtistProfile({ artistId, initial }: { artistId: number; initial
       {/* hero — official banner */}
       <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
         {(o?.bannerUrl || artist.imageUrl) && (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={o?.bannerUrl ?? artist.imageUrl ?? ""} alt="" aria-hidden className={cn("absolute inset-0 h-full w-full object-cover", o?.bannerUrl ? "opacity-70" : "scale-110 opacity-40 blur-3xl")} />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b0e] via-[#0b0b0e]/75 to-black/30" />
         <div className="relative flex flex-col gap-5 p-6 pt-24 md:flex-row md:items-end md:p-8 md:pt-32">
           <div className="relative shrink-0">
             {artist.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+
               <img src={artist.imageUrl} alt={artist.name} className="size-40 rounded-full object-cover shadow-2xl ring-4 ring-[#0b0b0e] md:size-52" />
             ) : (
               <div className="grid size-40 place-items-center rounded-full bg-white/10 text-5xl font-black md:size-52">{artist.name[0]}</div>
@@ -165,7 +164,7 @@ export function ArtistProfile({ artistId, initial }: { artistId: number; initial
                   <button key={tr.id} onClick={() => playQueueNow(topTracks, i)} className="flex items-center gap-3 rounded-2xl bg-white/[0.04] p-2.5 text-start ring-1 ring-white/[0.06] hover:bg-white/[0.08]">
                     <span className="font-mono text-lg font-black text-white/25">{i + 1}</span>
                     {tr.coverUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
+
                       <img src={tr.coverUrl} alt="" className="size-12 rounded-lg object-cover" />
                     )}
                     <span className="min-w-0">

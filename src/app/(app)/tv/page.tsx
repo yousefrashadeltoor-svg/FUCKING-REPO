@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Live TV — two-level taxonomy, professionally organised.
@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { TvPlayer } from "@/components/tv/TvPlayer";
-import type { TvChannelDTO } from "@/lib/server/tv";
+import type { TvChannelDTO } from "@/lib/data/tv";
 
 interface GroupDef {
   id: string;
@@ -114,7 +114,7 @@ function TvPageInner() {
       if (group) sp.set("group", group);
       if (category) sp.set("category", category);
       if (q.trim()) sp.set("q", q.trim());
-      fetch(`/api/tv?${sp}`, { signal: ctrl.signal })
+      localFetch(`/api/tv?${sp}`, { signal: ctrl.signal })
         .then((r) => r.json())
         .then((d: { channels?: TvChannelDTO[]; counts?: Record<string, Record<string, number>>; total?: number; error?: string }) => {
           setChannels(d.channels ?? []);
@@ -152,7 +152,7 @@ function TvPageInner() {
   useEffect(() => {
     if (!deepChannel || deepHandled.current) return;
     deepHandled.current = true;
-    void fetch(`/api/tv?q=${encodeURIComponent(deepChannel)}&limit=5`)
+    void localFetch(`/api/tv?q=${encodeURIComponent(deepChannel)}&limit=5`)
       .then((r) => r.json())
       .then((d: { channels: TvChannelDTO[] }) => {
         const c = d.channels.find((x) => x.id === deepChannel) ?? d.channels[0];
@@ -184,7 +184,7 @@ function TvPageInner() {
       >
         <div className="relative grid aspect-video w-full place-items-center overflow-hidden rounded-xl bg-white/[0.06]">
           {c.logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
+
             <img
               src={c.logo}
               alt=""
@@ -274,7 +274,7 @@ function TvPageInner() {
                 )}
               >
                 {c.logo && (
-                  // eslint-disable-next-line @next/next/no-img-element
+
                   <img src={c.logo} alt="" className="h-4 w-6 rounded-sm bg-white/90 object-contain" />
                 )}
                 {c.name}

@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // Playlist detail header: cover mosaic, title, meta, play-all + add-track UI.
 import { useState } from "react";
@@ -9,7 +9,6 @@ import { enqueueTrack } from "@/stores/download-store";
 import { links, shareUrl } from "@/lib/share";
 import { toast } from "sonner";
 import { formatTime } from "@/lib/utils";
-import { usePlayerStore } from "@/stores/player-store";
 import { playQueueNow } from "@/lib/player-actions";
 import type { PlaylistDetailDTO } from "@/lib/types";
 import { useT } from "@/lib/i18n";
@@ -27,13 +26,13 @@ export function PlaylistHeader({ playlist }: { playlist: PlaylistDetailDTO }) {
       setResults([]);
       return;
     }
-    const res = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}`);
+    const res = await localFetch(`/api/search?q=${encodeURIComponent(q.trim())}`);
     const data = (await res.json()) as { tracks: { id: number; title: string; artistName: string }[] };
     setResults(data.tracks.slice(0, 6));
   };
 
   const addTrack = async (trackId: number) => {
-    const res = await fetch(`/api/playlists/${playlist.id}/tracks`, {
+    const res = await localFetch(`/api/playlists/${playlist.id}/tracks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trackId }),
@@ -51,7 +50,7 @@ export function PlaylistHeader({ playlist }: { playlist: PlaylistDetailDTO }) {
 
   const remove = async () => {
     if (!window.confirm(`Delete playlist “${playlist.title}”?`)) return;
-    const res = await fetch(`/api/playlists/${playlist.id}`, { method: "DELETE" });
+    const res = await localFetch(`/api/playlists/${playlist.id}`, { method: "DELETE" });
     if (res.ok) {
       toast.success(t("playlistDeleted"));
       router.push("/library");
@@ -62,7 +61,7 @@ export function PlaylistHeader({ playlist }: { playlist: PlaylistDetailDTO }) {
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/[0.07] to-transparent p-6 md:p-8">
       <div className="flex flex-col gap-5 md:flex-row md:items-end">
         {playlist.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img
             src={playlist.coverUrl}
             alt={playlist.title}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ar" dir="rtl" data-theme="midnight" data-density="comfortable">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#05060a" />
+    <meta name="description" content="DON MUSE — موسيقاك وقرآنك وراديوك، محليًا على جهازك." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>DON MUSE</title>
+    <script src="/native-bootstrap.js"></script>
+    <script>
+      try {
+        var p = JSON.parse(localStorage.getItem('dm:aura-settings') || '{}').state || {};
+        var d = document.documentElement;
+        var colors = {emerald:'#1DB954',rose:'#FA2D55',violet:'#8B5CF6',cyan:'#00D4FF',amber:'#FFB800',gold:'#D4AF37'};
+        d.dataset.theme = p.theme || 'midnight'; d.dataset.density = p.density || 'comfortable';
+        d.dataset.motion = p.reducedEffects ? 'reduced' : 'normal';
+        d.style.setProperty('--app-accent', colors[p.accent] || '#1DB954');
+      } catch (_) {}
+    </script>
+  </head>
+  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+</html>

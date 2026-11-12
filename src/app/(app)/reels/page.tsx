@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Reels — TikTok-style feed of real music, rebuilt for reliability:
@@ -58,14 +58,14 @@ export default function ReelsPage() {
   const storeMuted = usePlayerStore((s) => s.muted);
 
   const report = useCallback((trackId: number, kind: string, watchedSec = 0) => {
-    void fetch("/api/reels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId, kind, watchedSec }) }).catch(() => {});
+    void localFetch("/api/reels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId, kind, watchedSec }) }).catch(() => {});
   }, []);
 
   const load = useCallback(async (c: number) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/reels?cursor=${c}&limit=10${startTrackId && c === 0 ? `&track=${startTrackId}` : ""}`);
+      const res = await localFetch(`/api/reels?cursor=${c}&limit=10${startTrackId && c === 0 ? `&track=${startTrackId}` : ""}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = (await res.json()) as { reels: ReelDTO[]; nextCursor: number; hasMore: boolean };
       setReels((r) => (c === 0 ? d.reels : [...r, ...d.reels.filter((x) => !r.some((y) => y.track.id === x.track.id))]));
@@ -183,7 +183,7 @@ export default function ReelsPage() {
   const onLike = (r: ReelDTO) => {
     const was = likedIds.includes(r.track.id);
     toggleLike(r.track.id);
-    void fetch("/api/likes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId: r.track.id }) }).catch(() => {});
+    void localFetch("/api/likes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId: r.track.id }) }).catch(() => {});
     if (!was) report(r.track.id, "like");
   };
   const onShare = async (r: ReelDTO) => {
@@ -241,7 +241,7 @@ export default function ReelsPage() {
             >
               {/* background */}
               {cover && (
-                // eslint-disable-next-line @next/next/no-img-element
+
                 <img src={cover} alt="" className={cn("absolute inset-0 h-full w-full object-cover transition-transform duration-[8000ms]", playingThis ? "scale-110" : "scale-100")} />
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-black/45" />
@@ -257,7 +257,7 @@ export default function ReelsPage() {
               <div className={cn("pointer-events-none absolute left-1/2 top-[22%] -translate-x-1/2", playingThis && "animate-spin-slow")}>
                 <div className="grid size-40 place-items-center rounded-full bg-black/70 shadow-2xl ring-4 ring-white/10 sm:size-52">
                   {cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
+
                     <img src={cover} alt="" className="size-32 rounded-full object-cover sm:size-44" />
                   ) : <Music2 className="size-14 text-white/40" />}
                   <span className="absolute size-5 rounded-full bg-black ring-2 ring-white/30" />
@@ -284,7 +284,7 @@ export default function ReelsPage() {
                 {r.artist && (
                   <Link href={`/artists/${r.artist.id}`} className="relative" title={r.artist.name}>
                     {r.artist.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
+
                       <img src={r.artist.imageUrl} alt="" className="size-12 rounded-full object-cover ring-2 ring-white" />
                     ) : <span className="grid size-12 place-items-center rounded-full bg-white/20 text-lg font-black ring-2 ring-white">{r.artist.name[0]}</span>}
                     <span className="absolute -bottom-1 -right-1 grid size-5 place-items-center rounded-full bg-black ring-2 ring-black"><BrandIcon name={r.artist.source} color="brand" className="size-3" /></span>
@@ -293,7 +293,7 @@ export default function ReelsPage() {
                 {r.featuring && (
                   <Link href={`/artists/${r.featuring.id}`} className="relative -mt-2" title={r.featuring.name}>
                     {r.featuring.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
+
                       <img src={r.featuring.imageUrl} alt="" className="size-10 rounded-full object-cover ring-2 ring-white/70" />
                     ) : <span className="grid size-10 place-items-center rounded-full bg-white/20 text-sm font-black ring-2 ring-white/70">{r.featuring.name[0]}</span>}
                   </Link>

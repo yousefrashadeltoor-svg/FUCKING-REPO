@@ -1,43 +1,7 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getAlbumDetail, getDemoUser } from "@/lib/server/queries";
-import { searchYouTubeMusic } from "@/lib/server/youtube";
-import { upsertTracks } from "@/lib/server/catalog";
-import { TrackList } from "@/components/tracks/TrackList";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { AlbumHeader } from "@/components/albums/AlbumHeader";
-
-export const dynamic = "force-dynamic";
-
-type Ctx = { params: Promise<{ id: string }> };
-
-export default async function AlbumPage({ params }: Ctx) {
-  const { id } = await params;
-  const albumId = Number(id);
-  if (!Number.isInteger(albumId)) notFound();
-  const user = await getDemoUser();
-  const detail = await getAlbumDetail(albumId, user.id);
-  if (!detail) notFound();
-  if (detail.tracks.length < 3) {
-    try {
-      const more = await upsertTracks(await searchYouTubeMusic(`${detail.album.title} ${detail.album.artistName}`, 14), user.id);
-      const seen = new Set(detail.tracks.map((t) => t.id));
-      detail.tracks = [...detail.tracks, ...more.filter((t) => !seen.has(t.id))];
-    } catch {
-      /* offline */
-    }
-  }
-
-  return (
-    <div className="p-4 md:p-6">
-      <AlbumHeader album={detail.album} artist={detail.artist} tracks={detail.tracks} />
-      <div className="mt-6">
-        <TrackList tracks={detail.tracks} showAlbum={false} />
-      </div>
-      {detail.artist && (
-        <p className="mt-6 px-1 text-xs text-white/30">
-          <Link href={`/artists/${detail.artist.id}`} className="font-semibold text-white/60 hover:underline">{detail.artist.name} →</Link>
-        </p>
-      )}
-    </div>
-  );
-}
+import { TrackList } from "@/components/tracks/TrackList";
+import { localFetch } from "@/lib/local/client";
+import type { AlbumDTO,ArtistDTO,TrackDTO } from "@/lib/types";
+export default function Page(){const {id}=useParams<{id:string}>();const [data,setData]=useState<{album:AlbumDTO;artist:ArtistDTO|null;tracks:TrackDTO[]}|null>(null);useEffect(()=>{void localFetch(`/api/albums/${id}`).then(async r=>{if(r.ok)setData(await r.json() as {album:AlbumDTO;artist:ArtistDTO|null;tracks:TrackDTO[]});});},[id]);return data?<div className="p-4 md:p-6"><AlbumHeader album={data.album} artist={data.artist} tracks={data.tracks}/><div className="mt-6"><TrackList tracks={data.tracks} showAlbum={false}/></div></div>:<p className="p-8 text-center text-white/50">الألبوم غير محفوظ على الجهاز.</p>;}

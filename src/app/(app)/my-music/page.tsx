@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  «موسيقاي» — the real device media library.
@@ -55,11 +54,11 @@ const TABS: { id: Tab; key: Parameters<ReturnType<typeof useT>>[0]; icon: typeof
   { id: "playlists", key: "myMusicPlaylists", icon: ListMusic },
 ];
 
-function Cover({ item, size = 48, round }: { item: DeviceItem; size?: number; round?: boolean }) {
+function Cover({ item, size = 64, round }: { item: DeviceItem; size?: number; round?: boolean }) {
   const [broken, setBroken] = useState(false);
   if (item.albumArtUri && !broken) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
+
       <img
         src={item.albumArtUri}
         alt=""
@@ -123,11 +122,19 @@ function MyMusicInner() {
   const [addingTo, setAddingTo] = useState<DeviceItem | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
+  const requestedOpen = useRef<string | null>(null);
 
   useEffect(() => {
     void init();
     if (native) setPermitted(hasPermission());
   }, [init, native, hasPermission]);
+
+  useEffect(() => {
+    const uri=params.get("open");
+    if(!uri||requestedOpen.current===uri||!songs.length)return;
+    const index=songs.findIndex(x=>x.uri===uri);
+    if(index>=0){requestedOpen.current=uri;void playItems(songs,index,"intent");}
+  },[params,songs,playItems]);
 
   useEffect(() => {
     if (params.get("offline") === "1" && native && !hasPermission()) {
@@ -181,7 +188,7 @@ function MyMusicInner() {
     void playItems(list, index < 0 ? 0 : index);
   };
 
-  const selectedItems = all.filter((i) => selected.has(i.id));
+  const _selectedItems = all.filter((i) => selected.has(i.id));
 
   return (
     <div className="relative min-h-full p-4 md:p-6">
@@ -835,7 +842,7 @@ function EditDialog({
         <div className="mb-4 flex items-center gap-3">
           <button onClick={() => void pickCover()} className="relative size-20 shrink-0 overflow-hidden rounded-xl">
             {cover ? (
-              // eslint-disable-next-line @next/next/no-img-element
+
               <img src={cover} alt="" className="size-full object-cover" />
             ) : (
               <Cover item={item} size={80} />

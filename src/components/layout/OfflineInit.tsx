@@ -1,4 +1,3 @@
-"use client";
 
 // Registers the service worker (local-first UI) and shows a slim offline
 // banner. Streaming / downloads are the only online features.
@@ -12,7 +11,7 @@ export function OfflineInit() {
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+      if (document.documentElement.dataset.host !== "android") navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => {});
     }
     const on = () => setOffline(false);
     const off = () => setOffline(true);

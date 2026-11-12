@@ -1,18 +1,6 @@
-import { notFound } from "next/navigation";
-import { getDemoUser } from "@/lib/server/queries";
-import { buildArtistProfile } from "@/lib/server/artist-profile";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { ArtistProfile } from "@/components/artists/ArtistProfile";
-
-export const dynamic = "force-dynamic";
-
-type Ctx = { params: Promise<{ id: string }> };
-
-export default async function ArtistPage({ params }: Ctx) {
-  const { id } = await params;
-  const artistId = Number(id);
-  if (!Number.isInteger(artistId)) notFound();
-  const user = await getDemoUser();
-  const profile = await buildArtistProfile(artistId, user.id);
-  if (!profile) notFound();
-  return <ArtistProfile artistId={artistId} initial={profile} />;
-}
+import { localFetch } from "@/lib/local/client";
+import type { ArtistProfileDTO } from "@/lib/types";
+export default function Page(){const {id}=useParams<{id:string}>();const [data,setData]=useState<ArtistProfileDTO|null>(null);useEffect(()=>{const load=()=>{void localFetch(`/api/artists/${id}/profile`).then(async r=>{if(r.ok)setData(await r.json() as ArtistProfileDTO);});};load();window.addEventListener("donmuse:refresh",load);return()=>window.removeEventListener("donmuse:refresh",load);},[id]);return <ArtistProfile artistId={Number(id)} initial={data}/>;}

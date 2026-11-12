@@ -1,4 +1,3 @@
-"use client";
 
 // Time-synced lyrics: highlights the active line, auto-scrolls, click to seek.
 import { useEffect, useMemo, useRef } from "react";
@@ -17,7 +16,7 @@ export function LyricsPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLParagraphElement | null)[]>([]);
 
-  const lyrics = track?.lyrics ?? [];
+  const lyrics = useMemo(() => track?.lyrics ?? [], [track?.lyrics]);
 
   const activeIndex = useMemo(() => {
     if (lyrics.length === 0) return -1;

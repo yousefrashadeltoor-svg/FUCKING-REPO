@@ -1,4 +1,3 @@
-"use client";
 
 // Keeps the audio elements in the document (never unmounted, never detached).
 // Some Android WebViews pause detached media, which caused the "music stops

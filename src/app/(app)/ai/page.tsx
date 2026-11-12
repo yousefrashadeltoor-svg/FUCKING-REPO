@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  AURA Intelligence — natural-language playlist generator + AI radio host.
@@ -13,6 +13,9 @@ import { Sparkles, Wand2, Loader2, Radio } from "lucide-react";
 import { toast } from "sonner";
 import type { PlaylistDetailDTO } from "@/lib/types";
 import { useT } from "@/lib/i18n";
+import { useSettingsStore } from "@/stores/settings-store";
+import { platformStorage } from "@/lib/storage";
+import { hydrateLocal, localSnapshot } from "@/lib/local/state";
 
 const SUGGESTIONS = [
   "dark techno from 2024, high BPM",
@@ -25,45 +28,37 @@ const SUGGESTIONS = [
   "hard workout techno, 140+ BPM",
 ];
 
-const HOST_LINES = [
-  "Welcome back to DON MUSE. I'm your AI host — tonight's flow is tuned to your listening DNA.",
-  "Up next: something with a little more bite. Energy is rising.",
-  "This one's a deep cut — 0.3% of listeners have this in their library. Enjoy the rarity.",
-  "Crossfading smoothly… the loudness is normalized, so sit back and let it ride.",
-  "Mood detected: focused. Keeping the BPM in the sweet spot for deep work.",
-];
-
 export default function AIPage() {
   const t = useT();
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ playlist: PlaylistDetailDTO; explanation: string; matchedCount: number } | null>(null);
-  const [hostLine, setHostLine] = useState(HOST_LINES[0]);
+  const [hostLine, setHostLine] = useState("اقتراحات من مكتبتك على الجهاز. أضف مفتاح AI اختياريًا من الإعدادات للحصول على توصيات مولّدة.");
 
   const generate = async (p: string) => {
-    if (!p.trim() || loading) return;
-    setLoading(true);
-    setResult(null);
-    setHostLine(HOST_LINES[Math.floor(Math.random() * HOST_LINES.length)]);
+    if (!p.trim() || loading) return; setLoading(true); setResult(null);
     try {
-      const res = await fetch("/api/ai/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: p.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error ?? "Generation failed");
-        return;
+      await hydrateLocal(); const all=Object.values(localSnapshot().tracks);
+      if(!all.length){toast.error("أضف ملفات إلى موسيقاي أو ابحث عن مقاطع أولًا؛ لن نخترع قائمة غير موجودة.");return;}
+      const key=await platformStorage.getItem("donmuse.ai.key");
+      let ids:number[]=[];let title="اقتراح من مكتبتك";let explanation="ترتيب محلي حسب كلمات طلبك. لم يُستخدم اتصال أو نموذج AI.";
+      const words=p.toLowerCase().split(/\s+/).filter(Boolean);
+      const ranked=all.map(t=>({t,score:words.reduce((n,w)=>n+(`${t.title} ${t.artistName} ${t.genre}`.toLowerCase().includes(w)?1:0),0)})).sort((a,b)=>b.score-a.score);
+      ids=ranked.filter(x=>x.score>0).map(x=>x.t.id).slice(0,25);if(!ids.length)ids=all.slice(0,20).map(t=>t.id);
+      if(key){
+        const settings=useSettingsStore.getState();const endpoint=new URL(settings.aiEndpoint);if(endpoint.protocol!=="https:")throw new Error("استخدم رابط HTTPS لمزود AI");
+        setHostLine("جارٍ إرسال طلبك مباشرة إلى مزود AI الذي اخترته…");
+        const res=await fetch(endpoint.href,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(60_000),body:JSON.stringify({model:settings.aiModel,messages:[{role:"system",content:"You are a music playlist assistant. Choose only IDs from the supplied library. Return JSON only: {title,explanation,trackIds:number[]}. Explain in the user's language."},{role:"user",content:JSON.stringify({request:p,library:all.slice(0,200).map(t=>({id:t.id,title:t.title,artist:t.artistName,genre:t.genre}))})}],temperature:.5})});
+        if(!res.ok)throw new Error(`مزود AI رفض الطلب (${res.status}); تحقق من المفتاح والرصيد والموديل`);
+        const data=await res.json() as {choices?:{message:{content:string}}[]};const text=data.choices?.[0]?.message?.content??"";const parsed=JSON.parse(text.replace(/^```json\s*|\s*```$/g,"")) as {title?:string;explanation?:string;trackIds?:number[]};
+        const valid=new Set(all.map(t=>t.id));ids=(parsed.trackIds??[]).filter(id=>valid.has(id));title=parsed.title||title;explanation=parsed.explanation||"اقتراح مولّد من مكتبتك.";setHostLine(explanation);
       }
-      setResult(data);
-      toast.success(`DON MUSE AI composed “${data.playlist.title}” — ${data.matchedCount} tracks`);
-    } catch {
-      toast.error("Network error while generating");
-    } finally {
-      setLoading(false);
-    }
+      const tracks=ids.map(id=>all.find(t=>t.id===id)!).filter(Boolean);if(!tracks.length)throw new Error("لم يطابق النموذج أي مقطع موجود في مكتبتك");
+      const created=await localFetch("/api/playlists",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,description:explanation})});const playlist=await created.json() as PlaylistDetailDTO;
+      await localFetch(`/api/playlists/${playlist.id}/tracks`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({trackIds:ids})});
+      setResult({playlist:{...playlist,tracks,trackCount:tracks.length},explanation,matchedCount:tracks.length});toast.success(`تم حفظ “${title}” · ${tracks.length} مقطع`);
+    }catch(e){toast.error((e as Error).message||"تعذّر إنشاء القائمة");}finally{setLoading(false);}
   };
 
   return (
@@ -80,7 +75,7 @@ export default function AIPage() {
         {/* AI radio host ticker */}
         <div className="glass-panel mt-6 flex items-center gap-3 rounded-2xl p-4">
           <Radio className="size-5 shrink-0 animate-pulse text-[#00D4FF]" />
-          <p className="text-[13px] italic text-white/60">“{hostLine}”</p>
+          <p className="text-[13px] italic text-white/60">{hostLine}</p>
         </div>
 
         {/* prompt box */}
@@ -135,7 +130,7 @@ export default function AIPage() {
             >
               <div className="flex items-center gap-4">
                 {result.playlist.coverUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
+
                   <img src={result.playlist.coverUrl} alt="" className="size-20 rounded-xl object-cover shadow-lg" />
                 )}
                 <div className="min-w-0 flex-1">
@@ -158,7 +153,7 @@ export default function AIPage() {
                     <span className="w-5 text-right font-mono text-[11px] text-white/30">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate font-medium text-white/85">{t.title}</span>
                     <span className="truncate text-xs text-white/40">{t.artistName}</span>
-                    <span className="font-mono text-[10px] text-white/30">{Math.round(t.bpm)} BPM</span>
+                    <span className="font-mono text-[10px] text-white/30">{t.genre || "محلي"}</span>
                   </li>
                 ))}
               </ol>

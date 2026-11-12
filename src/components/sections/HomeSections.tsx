@@ -1,4 +1,3 @@
-"use client";
 
 // Renders home sections with translated titles (client-side i18n).
 import { SectionRow } from "@/components/sections/SectionRow";

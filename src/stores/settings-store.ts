@@ -36,6 +36,18 @@ export interface SettingsState {
   backgroundPlayback: boolean;
   /** prefer the lowest bitrate / skip video on metered connections */
   dataSaver: boolean;
+  wallpaper: "none" | "midnight-aurora" | "golden-dunes" | "ocean-vinyl" | "custom";
+  wallpaperOpacity: number;
+  customWallpaper: string;
+  largeArtwork: boolean;
+  aiEndpoint: string;
+  aiModel: string;
+  setWallpaper: (v: SettingsState["wallpaper"]) => void;
+  setWallpaperOpacity: (v: number) => void;
+  setCustomWallpaper: (v: string) => void;
+  setLargeArtwork: (v: boolean) => void;
+  setAiEndpoint: (v: string) => void;
+  setAiModel: (v: string) => void;
   setQuality: (q: Quality) => void;
   setAutoplay: (v: boolean) => void;
   setLoudnessNormalization: (v: boolean) => void;
@@ -164,6 +176,18 @@ export const useSettingsStore = create<SettingsState>()(
       autoOfflineLibrary: true,
       backgroundPlayback: true,
       dataSaver: false,
+      wallpaper: "midnight-aurora",
+      wallpaperOpacity: 0.38,
+      customWallpaper: "",
+      largeArtwork: true,
+      aiEndpoint: "https://api.openai.com/v1/chat/completions",
+      aiModel: "gpt-4o-mini",
+      setWallpaper: (wallpaper) => set({ wallpaper }),
+      setWallpaperOpacity: (v) => set({ wallpaperOpacity: Math.max(0.08, Math.min(0.7, v)) }),
+      setCustomWallpaper: (customWallpaper) => set({ customWallpaper }),
+      setLargeArtwork: (largeArtwork) => set({ largeArtwork }),
+      setAiEndpoint: (aiEndpoint) => set({ aiEndpoint }),
+      setAiModel: (aiModel) => set({ aiModel }),
       setQuality: (quality) => set({ quality }),
       setAutoplay: (autoplay) => set({ autoplay }),
       setLoudnessNormalization: (loudnessNormalization) => set({ loudnessNormalization }),

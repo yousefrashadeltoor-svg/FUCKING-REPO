@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  «التشخيصات» — live system diagnostics.
@@ -99,7 +99,7 @@ export default function DiagnosticsPage() {
     setBusy(true);
     setHealthError(null);
     try {
-      const res = await fetch("/api/health", { cache: "no-store" });
+      const res = await localFetch("/api/health", { cache: "no-store" });
       const data = (await res.json()) as HealthPayload;
       setHealth(data);
     } catch (err) {
@@ -117,7 +117,6 @@ export default function DiagnosticsPage() {
   }, [loadHealth, readStorage]);
 
   const engine = typeof window !== "undefined" ? getEngine() : null;
-  const detectedFps = fps;
   const native = isNativeHost() ? nativeDiagnostics() : null;
 
   const rows: Row[] = [

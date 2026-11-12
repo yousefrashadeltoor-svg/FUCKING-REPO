@@ -1,4 +1,3 @@
-"use client";
 
 // Waveform scrubber: renders the track's stored peak data as bars; click/drag to seek.
 import { useRef } from "react";

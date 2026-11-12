@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  iOS-style progress slider: waveform bars as the track, accent fill for

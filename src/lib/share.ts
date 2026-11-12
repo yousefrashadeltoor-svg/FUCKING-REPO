@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  Deep links + sharing. Every entity in DON MUSE has a canonical URL that
@@ -13,20 +12,28 @@
 //  shareX() uses the Web Share API when available, otherwise copies the link.
 // ============================================================================
 import type { TrackDTO } from "@/lib/types";
+import { isNativeHost } from "@/lib/platform/native";
 
 export function appOrigin(): string {
   if (typeof window === "undefined") return "";
   return window.location.origin;
 }
+function appLink(path: string): string {
+  if (typeof window === "undefined") return path;
+  // appassets.androidplatform.net is private to the WebView, not a shareable host.
+  if (isNativeHost()) return `donmuse://${path.replace(/^\//, "")}`;
+  const base = import.meta.env.BASE_URL === "./" ? "/" : import.meta.env.BASE_URL;
+  return new URL(`${base.replace(/\/$/, "")}/${path.replace(/^\//, "")}`, window.location.origin).href;
+}
 
 export const links = {
-  track: (id: number) => `${appOrigin()}/track/${id}`,
-  artist: (id: number) => `${appOrigin()}/artists/${id}`,
-  album: (id: number) => `${appOrigin()}/albums/${id}`,
-  playlist: (id: number) => `${appOrigin()}/playlists/${id}`,
-  reel: (trackId: number) => `${appOrigin()}/reels?track=${trackId}`,
-  station: (uuid: string) => `${appOrigin()}/radio?station=${encodeURIComponent(uuid)}`,
-  channel: (id: string) => `${appOrigin()}/tv?channel=${encodeURIComponent(id)}`,
+  track: (id: number) => appLink(`track/${id}`),
+  artist: (id: number) => appLink(`artists/${id}`),
+  album: (id: number) => appLink(`albums/${id}`),
+  playlist: (id: number) => appLink(`playlists/${id}`),
+  reel: (trackId: number) => appLink(`reels?track=${trackId}`),
+  station: (uuid: string) => appLink(`radio?station=${encodeURIComponent(uuid)}`),
+  channel: (id: string) => appLink(`tv?channel=${encodeURIComponent(id)}`),
 };
 
 export type ShareResult = "shared" | "copied" | "failed";

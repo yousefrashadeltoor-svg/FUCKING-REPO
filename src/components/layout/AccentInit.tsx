@@ -1,4 +1,3 @@
-"use client";
 
 // Applies the persisted accent color as --app-accent on the document root.
 import { useEffect } from "react";

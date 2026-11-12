@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  NetworkWatcher — resilient connection handling
@@ -29,7 +28,7 @@ export function NetworkWatcher() {
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     if (document.documentElement.dataset.host === "android") return;
-    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL }).catch(() => {});
   }, []);
 
   useEffect(() => {

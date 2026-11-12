@@ -1,4 +1,3 @@
-"use client";
 
 // Real-time spectrum analyzer driven by the engine's AnalyserNode (Web Audio FFT).
 import { useEffect, useRef } from "react";

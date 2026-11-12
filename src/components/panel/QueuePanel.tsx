@@ -1,4 +1,3 @@
-"use client";
 
 // Queue panel: current + upcoming tracks with reorder (up/down) and remove.
 import { X, ArrowUp, ArrowDown, ListMusic } from "lucide-react";
@@ -43,7 +42,7 @@ export function QueuePanel() {
           {active ? "▶" : i + 1}
         </button>
         {t.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={t.coverUrl} alt="" className="size-8 shrink-0 rounded-md object-cover" />
         )}
         <button

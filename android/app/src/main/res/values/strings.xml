@@ -2,7 +2,11 @@
     <string name="app_name">DON MUSE</string>
     <string name="channel_playback">تشغيل الموسيقى</string>
     <string name="channel_new_releases">إصدارات جديدة</string>
-    <string name="channel_followed">الفنانون المتابَعون</string>
+    <string name="channel_downloads">التنزيلات</string>
+    <string name="channel_general">إشعارات DON MUSE</string>
+    <string name="channel_alarms">المنبّه</string>
+    <string name="media3_notification_channel_name">تشغيل الموسيقى</string>
+    <string name="media3_notification_channel_description">التحكم في الموسيقى من الإشعار وشاشة القفل</string>
     <string name="play">تشغيل</string>
     <string name="pause">إيقاف</string>
     <string name="next">التالي</string>

@@ -1,4 +1,3 @@
-"use client";
 
 // Mobile bottom navigation (Android / narrow screens).
 // All five destinations are real routes, with the expandable player above it.

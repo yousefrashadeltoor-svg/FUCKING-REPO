@@ -1,112 +1,56 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-
-    <!-- ---------------------------- permissions ---------------------------- -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-
-    <!-- Real device media library (no copies, read in place) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
-    <!-- Metadata / artwork editing of user files on Android 11+ -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
-
+    <!-- Legacy public Music/Movies publication on Android 8/9 only. API 29+ uses scoped MediaStore. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- No MANAGE_EXTERNAL_STORAGE, battery-exemption request, or blanket file access. -->
 
-    <application
-        android:name=".DonMuseApp"
-        android:allowBackup="true"
-        android:fullBackupContent="true"
-        android:hardwareAccelerated="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:largeHeap="true"
-        android:roundIcon="@mipmap/ic_launcher"
-        android:supportsRtl="true"
-        android:usesCleartextTraffic="false"
-        android:theme="@style/Theme.DonMuse">
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask"
+    <application android:name=".DonMuseApp" android:allowBackup="false"
+        android:hardwareAccelerated="true" android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name" android:largeHeap="true"
+        android:roundIcon="@mipmap/ic_launcher" android:supportsRtl="true"
+        android:usesCleartextTraffic="true" android:theme="@style/Theme.DonMuse">
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|uiMode|density|fontScale"
-            android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.DonMuse">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <!-- deep links: donmuse://track/123 and https://…/track/123 -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="donmuse" />
-            </intent-filter>
-            <!-- Audio files opened from other apps -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="audio/*" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="video/*" />
-            </intent-filter>
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><category android:name="android.intent.category.BROWSABLE" /><data android:scheme="donmuse" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.VIEW" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="audio/*" /><data android:mimeType="video/*" /><data android:scheme="content" /><data android:scheme="file" /></intent-filter>
+            <intent-filter><action android:name="android.intent.action.SEND" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="text/plain" /></intent-filter>
         </activity>
-
-        <!-- Real background playback + MediaStyle notification + lock screen -->
-        <service
-            android:name=".playback.PlaybackService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService" />
-                <action android:name="android.media.browse.MediaBrowserService" />
-            </intent-filter>
+        <activity android:name=".alarms.AlarmActivity" android:exported="false" android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" android:launchMode="singleInstance" />
+        <service android:name=".playback.PlaybackService" android:exported="true" android:foregroundServiceType="mediaPlayback">
+            <intent-filter><action android:name="androidx.media3.session.MediaSessionService" /></intent-filter>
         </service>
-
-        <!-- Home-screen widgets -->
+        <service android:name=".download.DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <service android:name=".alarms.AlarmService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+        <receiver android:name=".alarms.AlarmReceiver" android:exported="false" />
+        <receiver android:name=".notify.BootReceiver" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /><action android:name="android.intent.action.TIME_SET" /><action android:name="android.intent.action.TIMEZONE_CHANGED" /></intent-filter>
+        </receiver>
         <receiver android:name=".widget.NowPlayingWidget" android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="fm.donmuse.app.WIDGET_TOGGLE" />
-                <action android:name="fm.donmuse.app.WIDGET_NEXT" />
-                <action android:name="fm.donmuse.app.WIDGET_PREV" />
-                <action android:name="fm.donmuse.app.WIDGET_STOP" />
-            </intent-filter>
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /><action android:name="fm.donmuse.app.WIDGET_TOGGLE" /><action android:name="fm.donmuse.app.WIDGET_NEXT" /><action android:name="fm.donmuse.app.WIDGET_PREV" /><action android:name="fm.donmuse.app.WIDGET_STOP" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/now_playing_widget_info" />
         </receiver>
         <receiver android:name=".widget.MiniPlayerWidget" android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="fm.donmuse.app.WIDGET_TOGGLE" />
-                <action android:name="fm.donmuse.app.WIDGET_NEXT" />
-                <action android:name="fm.donmuse.app.WIDGET_PREV" />
-                <action android:name="fm.donmuse.app.WIDGET_STOP" />
-            </intent-filter>
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /><action android:name="fm.donmuse.app.WIDGET_TOGGLE" /><action android:name="fm.donmuse.app.WIDGET_NEXT" /><action android:name="fm.donmuse.app.WIDGET_PREV" /><action android:name="fm.donmuse.app.WIDGET_STOP" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/mini_player_widget_info" />
-        </receiver>
-
-        <receiver android:name=".notify.BootReceiver" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
         </receiver>
     </application>
 </manifest>

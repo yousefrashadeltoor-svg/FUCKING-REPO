@@ -1,164 +1,111 @@
 package fm.donmuse.app.playback
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
+import fm.donmuse.app.bridge.AppStorage
 import fm.donmuse.app.bridge.NativeEvents
 import fm.donmuse.app.widget.WidgetUpdater
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
-/**
- * The single native player facade used by the bridge, the widgets and the
- * sleep timer. It is the authoritative playback state on Android — the WebView
- * mirrors it, never the other way round.
- */
+/** ExoPlayer is authoritative; every player call and read uses the main looper. */
 object NativePlayer {
-    private var player: ExoPlayer? = null
-    private var session: MediaSession? = null
-    private var appContext: Context? = null
-    private var sleepHandler: Handler? = null
-    private var sleepRunnable: Runnable? = null
-    /** Queue handed over before the service finished connecting. */
-    private var pendingQueue: String? = null
+    private val main=Handler(Looper.getMainLooper())
+    private var player:ExoPlayer?=null
+    private var context:Context?=null
+    private var pending:String?=null
+    private var error:String?=null
+    private var volume=1f;private var rate=1f;private var repeat=Player.REPEAT_MODE_OFF;private var shuffle=false
+    private var sleepRunnable:Runnable?=null
+    private val fadeRunnables=mutableListOf<Runnable>()
+    private val tracks=ConcurrentHashMap<String,JSONObject>()
+    @Volatile private var snapshot=JSONObject()
+    @Volatile private var lastPersist=0L
+    private val ticker=object:Runnable{override fun run(){emit();main.postDelayed(this,500)}}
+    val equalizer=EqualizerProcessor()
 
-    fun attach(exo: ExoPlayer, mediaSession: MediaSession, ctx: Context) {
-        player = exo
-        session = mediaSession
-        appContext = ctx.applicationContext
-        // Anything the UI sent while the service was still starting.
-        pendingQueue?.let { json ->
-            pendingQueue = null
-            runCatching { setQueue(ctx, json) }
-        }
-        exo.addListener(object : Player.Listener {
-            override fun onEvents(p: Player, events: Player.Events) {
-                WidgetUpdater.refresh(appContext ?: return)
-                NativeEvents.pushPlayback(stateJson())
-            }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                WidgetUpdater.refresh(appContext ?: return)
-                NativeEvents.pushPlayback(stateJson())
-            }
+    fun attach(exo:ExoPlayer,ctx:Context){main.post{
+        player=exo;context=ctx.applicationContext
+        exo.volume=volume;exo.setPlaybackSpeed(rate);exo.repeatMode=repeat;exo.shuffleModeEnabled=shuffle
+        exo.addListener(object:Player.Listener{
+            override fun onEvents(player:Player,events:Player.Events){emit();if(System.currentTimeMillis()-lastPersist>5000)persist()}
+            override fun onPlayerError(e:PlaybackException){error="تعذّر تشغيل المصدر: ${e.errorCodeName}";emit()}
+            override fun onMediaItemTransition(item:MediaItem?,reason:Int){error=null;emit();persist()}
         })
-    }
-
-    fun detach() {
-        session = null
-        player = null
-    }
-
-    /** Replace the queue with the items sent by the UI and start playing. */
-    fun setQueue(ctx: Context, json: String) {
-        appContext = ctx.applicationContext
-        val exo = player
-        if (exo == null) {
-            // Service not connected yet — remember it and replay on attach.
-            pendingQueue = json
-            return
-        }
-        val root = JSONObject(json)
-        val items = root.optJSONArray("items") ?: JSONArray()
-        val index = root.optInt("index", 0)
-        val autoplay = root.optBoolean("autoplay", true)
-        val startAtMs = root.optLong("startAtMs", 0)
-
-        val mediaItems = ArrayList<MediaItem>(items.length())
-        for (i in 0 until items.length()) {
-            val o = items.getJSONObject(i)
-            val artUri = o.optString("artUri", "")
-            val meta = MediaMetadata.Builder()
-                .setTitle(o.optString("title"))
-                .setArtist(o.optString("artist"))
-                .setAlbumTitle(o.optString("album"))
-                .setArtworkUri(if (artUri.isNotEmpty() && artUri != "null") android.net.Uri.parse(artUri) else null)
-                .setMediaId(o.optString("id"))
-                .build()
-            mediaItems += MediaItem.Builder()
-                .setUri(o.optString("uri"))
-                .setMediaId(o.optString("id"))
-                .setMediaMetadata(meta)
-                .build()
-        }
-        exo.setMediaItems(mediaItems, index.coerceIn(0, maxOf(0, mediaItems.size - 1)), startAtMs)
-        exo.prepare()
-        exo.playWhenReady = autoplay
-        WidgetUpdater.refresh(ctx)
-    }
-
-    fun toggle() {
-        val p = player ?: return
-        if (p.isPlaying) p.pause() else p.play()
-    }
-
-    fun play() { player?.play() }
-    fun pause() { player?.pause() }
-    fun next() { player?.seekToNextMediaItem() }
-    fun previous() {
-        val p = player ?: return
-        if (p.currentPosition > 3000) p.seekTo(0) else p.seekToPreviousMediaItem()
-    }
-    fun seek(ms: Long) { player?.seekTo(ms) }
-    fun stop() {
-        player?.stop()
-        player?.clearMediaItems()
-    }
-    fun setVolume(v: Float) { player?.volume = v.coerceIn(0f, 1f) }
-    fun setRate(r: Float) { player?.setPlaybackSpeed(r.coerceIn(0.5f, 3f)) }
-
-    /** Sleep timer that fades out then pauses. */
-    fun setSleepTimer(ms: Long) {
-        val ctx = appContext ?: return
-        val h = sleepHandler ?: Handler(Looper.getMainLooper()).also { sleepHandler = it }
-        sleepRunnable?.let { h.removeCallbacks(it) }
-        if (ms <= 0) {
-            player?.volume = 1f
-            return
-        }
-        val r = Runnable {
-            val exo = player ?: return@Runnable
-            val steps = 20
-            val startVol = exo.volume
-            val stepMs = 500L
-            for (i in 1..steps) {
-                h.postDelayed({ exo.volume = startVol * (1f - i.toFloat() / steps) }, stepMs * i)
+        val queue=pending;pending=null;if(queue!=null)applyQueue(queue,false)
+        main.removeCallbacks(ticker);main.post(ticker)
+    }}
+    fun detach(){main.post{main.removeCallbacks(ticker);cancelSleep();player=null;snapshot=JSONObject(snapshot.toString()).put("playing",false).put("buffering",false);NativeEvents.emit("playback",snapshot.toString())}}
+    private fun run(fn:(ExoPlayer)->Unit){main.post{val p=player;if(p!=null)fn(p)else context?.let{start(it)}}}
+    fun start(ctx:Context){context=ctx.applicationContext;ContextCompat.startForegroundService(ctx,Intent(ctx,PlaybackService::class.java).setAction(PlaybackService.ACTION_PREPARE))}
+    fun setQueue(ctx:Context,json:String){context=ctx.applicationContext;main.post{val p=player;if(p==null){pending=json;start(ctx)}else applyQueue(json,false)}}
+    fun updateQueue(json:String){main.post{val p=player;if(p==null){pending=json;start(ctx)}else applyQueue(json,true)}}
+    private fun applyQueue(json:String,preservePosition:Boolean){
+        val p=player ?: run{pending=json;return}
+        try{
+            val root=JSONObject(json);val items=root.optJSONArray("items") ?: JSONArray();require(items.length()>0){"قائمة التشغيل فارغة"}
+            val media=ArrayList<MediaItem>();tracks.clear()
+            root.optJSONArray("tracks")?.let{for(i in 0 until it.length()){val t=it.optJSONObject(i)?:continue;tracks[t.optInt("id").toString()]=t}}
+            for(i in 0 until items.length()){
+                val o=items.getJSONObject(i);val id=o.getString("id");o.optJSONObject("track")?.let{tracks[id]=it}
+                val art=o.optString("artUri").takeIf{it.isNotBlank()&&it!="null"}
+                val meta=MediaMetadata.Builder().setTitle(o.optString("title","DON MUSE")).setArtist(o.optString("artist")).setAlbumTitle(o.optString("album")).setArtworkUri(art?.let(Uri::parse)).setMediaId(id).build()
+                media+=MediaItem.Builder().setMediaId(id).setUri(o.getString("uri")).setMimeType(o.optString("mime").takeIf{it.isNotBlank()&&it!="null"}).setMediaMetadata(meta).build()
             }
-            h.postDelayed({
-                exo.pause()
-                exo.volume = 1f
-                WidgetUpdater.refresh(ctx)
-            }, stepMs * (steps + 1))
+            val oldId=p.currentMediaItem?.mediaId;val oldPosition=p.currentPosition
+            val requested=root.optInt("index",0).coerceIn(0,media.size-1)
+            val index=if(preservePosition)media.indexOfFirst{it.mediaId==oldId}.takeIf{it>=0} ?: requested else requested
+            val position=if(preservePosition&&media[index].mediaId==oldId)oldPosition else root.optLong("startAtMs",0)
+            error=null;cancelSleep();p.volume=volume;p.setPlaybackSpeed(rate);p.repeatMode=repeat;p.shuffleModeEnabled=shuffle
+            p.setMediaItems(media,index,position);p.prepare();if(!preservePosition)p.playWhenReady=root.optBoolean("autoplay",true)
+            context?.let{AppStorage(it).set("donmuse.lastQueue",root.toString())};persist();emit()
+        }catch(e:Exception){error=e.message ?: "قائمة غير صالحة";emit()}
+    }
+    fun play(){run{it.play()}}
+    fun pause(){run{it.pause()}}
+    fun toggle(){run{if(it.isPlaying||it.playWhenReady)it.pause()else it.play()}}
+    fun next(){run{if(it.hasNextMediaItem())it.seekToNextMediaItem()else if(it.repeatMode==Player.REPEAT_MODE_ALL&&it.mediaItemCount>0)it.seekTo(0,0)}}
+    fun previous(){run{if(it.currentPosition>3000||!it.hasPreviousMediaItem())it.seekTo(0)else it.seekToPreviousMediaItem()}}
+    fun seek(ms:Long){run{it.seekTo(ms.coerceAtLeast(0))}}
+    fun stop(){main.post{cancelSleep();player?.run{stop();clearMediaItems()};error=null;emit();persist()}}
+    fun setVolume(v:Float){volume=v.coerceIn(0f,1f);run{it.volume=volume}}
+    fun setRate(v:Float){rate=v.coerceIn(.25f,3f);run{it.setPlaybackSpeed(rate)}}
+    fun setRepeat(mode:String){repeat=when(mode){"one"->Player.REPEAT_MODE_ONE;"all"->Player.REPEAT_MODE_ALL;else->Player.REPEAT_MODE_OFF};run{it.repeatMode=repeat}}
+    fun setShuffle(on:Boolean){shuffle=on;run{it.shuffleModeEnabled=on}}
+    fun setEq(json:String){val a=JSONArray(json);equalizer.setBands(DoubleArray(10){a.optDouble(it,0.0)})}
+    private fun cancelSleep(){sleepRunnable?.let(main::removeCallbacks);fadeRunnables.forEach(main::removeCallbacks);fadeRunnables.clear();sleepRunnable=null;player?.volume=volume}
+    fun setSleepTimer(ms:Long){main.post{cancelSleep();if(ms<=0)return@post;val r=Runnable{fadeOut(8)};sleepRunnable=r;main.postDelayed(r,ms.coerceAtLeast(1))}}
+    fun fadeOut(seconds:Int){main.post{cancelSleep();val p=player ?: return@post;val start=p.volume;for(i in 1..20){val r=Runnable{player?.volume=start*(1-i/20f)};fadeRunnables.add(r);main.postDelayed(r,i*seconds*50L)}val r=Runnable{player?.pause();player?.volume=volume;emit()};fadeRunnables.add(r);main.postDelayed(r,seconds*1000L+80)}}
+    // These accessors read a main-thread snapshot, never ExoPlayer from the JS thread.
+    fun isPlaying()=snapshot.optBoolean("playing")
+    fun positionMs()=snapshot.optLong("positionMs")
+    fun durationMs()=snapshot.optLong("durationMs")
+    fun queueLength()=snapshot.optInt("queueLength")
+    fun currentTitle()=snapshot.optString("title","DON MUSE")
+    fun currentArtist()=snapshot.optString("artist","اضغط لفتح المشغّل")
+    fun currentArtUri()=snapshot.optString("artUri").takeIf{it.isNotBlank()&&it!="null"}
+    fun stateJson():String=snapshot.toString()
+    private fun emit(){
+        val p=player;val id=p?.currentMediaItem?.mediaId
+        snapshot=JSONObject().apply{
+            put("playing",p?.isPlaying==true);put("buffering",p?.playbackState==Player.STATE_BUFFERING);put("positionMs",p?.currentPosition ?: 0L);put("durationMs",p?.duration?.takeIf{it>0} ?: 0L)
+            put("itemId",id ?: JSONObject.NULL);put("index",p?.currentMediaItemIndex ?: -1);put("queueLength",p?.mediaItemCount ?: 0);put("ended",p?.playbackState==Player.STATE_ENDED);put("error",error ?: JSONObject.NULL);put("track",id?.let{tracks[it]} ?: JSONObject.NULL);put("audioSessionId",p?.audioSessionId ?: 0)
+            put("title",p?.currentMediaItem?.mediaMetadata?.title?.toString() ?: "DON MUSE");put("artist",p?.currentMediaItem?.mediaMetadata?.artist?.toString() ?: "اضغط لفتح المشغّل");put("artUri",p?.currentMediaItem?.mediaMetadata?.artworkUri?.toString() ?: JSONObject.NULL)
         }
-        sleepRunnable = r
-        h.postDelayed(r, ms)
+        NativeEvents.emit("playback",snapshot.toString());context?.let{WidgetUpdater.refresh(it)}
     }
-
-    fun isPlaying(): Boolean = player?.isPlaying == true
-    fun positionMs(): Long = player?.currentPosition ?: 0L
-    fun durationMs(): Long = player?.duration?.takeIf { it > 0 } ?: 0L
-    fun queueLength(): Int = player?.mediaItemCount ?: 0
-
-    fun stateJson(): String {
-        val p = player
-        return JSONObject().apply {
-            put("playing", p?.isPlaying == true)
-            put("buffering", p?.playbackState == Player.STATE_BUFFERING)
-            put("positionMs", p?.currentPosition ?: 0L)
-            put("durationMs", p?.duration?.takeIf { it > 0 } ?: 0L)
-            put("itemId", p?.currentMediaItem?.mediaId ?: JSONObject.NULL)
-            put("index", p?.currentMediaItemIndex ?: -1)
-            put("queueLength", p?.mediaItemCount ?: 0)
-        }.toString()
-    }
-
-    /** Used by the widget: current title / artist / playing state. */
-    fun currentTitle(): String = player?.currentMediaItem?.mediaMetadata?.title?.toString() ?: "DON MUSE"
-    fun currentArtist(): String = player?.currentMediaItem?.mediaMetadata?.artist?.toString() ?: "Tap to open"
-    fun currentArtUri(): String? = player?.currentMediaItem?.mediaMetadata?.artworkUri?.toString()
+    private fun persist(){lastPersist=System.currentTimeMillis();val ctx=context ?: return;val p=player ?: return;runCatching{AppStorage(ctx).set("donmuse.native.queue",JSONObject().put("positionMs",p.currentPosition).put("index",p.currentMediaItemIndex).put("title",currentTitle()).put("artist",currentArtist()).toString())}}
+    /** An explicit widget play can restore a queue after process death. */
+    fun restoreAndPlay(ctx:Context){val stored=AppStorage(ctx).get("donmuse.lastQueue") ?: return;setQueue(ctx,JSONObject(stored).put("autoplay",true).toString())}
+    fun saveRestoreQueue(json:String){context?.let{AppStorage(it).set("donmuse.lastQueue",json)}}
 }

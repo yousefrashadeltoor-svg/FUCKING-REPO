@@ -1,15 +1,14 @@
-"use client";
 
 // ============================================================================
 //  Radio Recorder — record the live station into a rolling in-browser buffer,
 //  visualize it as a loudness timeline, select a part (two handles or
 //  "mark start / mark end"), then:
-//    • Download clip  → the selected raw frames are uploaded to the server,
-//      which transcodes them to a clean, playable MP3 (ffmpeg) and returns it.
+//    • Download clip  → the selected raw frames are processed on-device,
+//      where FFmpeg creates a clean MP3; browsers keep the original codec.
 //    • Save to My Clips → same MP3, also stored on-device (IndexedDB) so the
 //      user can come back to it later.
-//  The server transcode is what fixes the "recorded radio clip won't download"
-//  bug (browser-only ID3 tagging of raw AAC/MP3 frames was unreliable).
+//  Native transcode fixes the "recorded radio clip won't download"
+//  bug without sending private recordings to an application server.
 // ============================================================================
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Square, Flag, FlagOff, Download, Radio, BookmarkPlus, Loader2 } from "lucide-react";
@@ -19,6 +18,8 @@ import { cn, formatTime } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { addClip, type SavedClip } from "@/lib/clipstore";
 import type { RadioStationDTO } from "@/lib/types";
+import { isNativeHost, transcodeRadioClip } from "@/lib/platform/native";
+import { useDownloadStore } from "@/stores/download-store";
 
 interface Chunk { t: number; bytes: Uint8Array; }
 const MAX_SECONDS = 30 * 60;
@@ -179,26 +180,26 @@ export function RadioRecorder({ station, streamUrl, onClipsChange }: { station: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, bytes]);
 
-  // Build the selection's raw frames → upload → MP3.
-  const makeClip = async (): Promise<Blob> => {
-    if (!station) throw new Error("empty");
+  // Android: FFmpeg transcodes the captured frames locally. Browsers save the
+  // original codec (MP3/AAC), clearly labelled; no upload or fake MP3 conversion.
+  const makeClip = async (): Promise<{blob:Blob;ext:string}> => {
+    if (!station) throw new Error("اختر محطة أولًا");
     const first = chunksRef.current[0]?.t ?? 0;
     const last = chunksRef.current[chunksRef.current.length - 1]?.t ?? 0;
     const range = sel ?? { start: first, end: last };
-    const parts = chunksRef.current.filter((c) => c.t >= range.start && c.t <= range.end).map((c) => c.bytes);
-    if (parts.length === 0) throw new Error("empty");
-    const blobIn = new Blob(parts as unknown as BlobPart[], { type: "application/octet-stream" });
-    const qs = new URLSearchParams({
-      name: station.name, country: station.country, from: formatTime(range.start), to: formatTime(range.end), cover: station.coverUrl ?? "",
-    });
-    const res = await fetch(`/api/radio/clip?${qs}`, { method: "POST", body: blobIn });
-    if (!res.ok) {
-      const b = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(b.error ?? `HTTP ${res.status}`);
-    }
-    return res.blob();
+    const parts = chunksRef.current.filter(c=>c.t>=range.start&&c.t<=range.end).map(c=>c.bytes);
+    if (!parts.length) throw new Error("التسجيل فارغ");
+    const mime=station.codec.includes("AAC")?"audio/aac":"audio/mpeg";
+    const raw=new Blob(parts as BlobPart[],{type:mime});
+    if(isNativeHost())return {blob:await transcodeRadioClip(raw,0,range.end-range.start),ext:"mp3"};
+    return {blob:raw,ext:mime==="audio/aac"?"aac":"mp3"};
   };
 
+  const saveToDevice = async (blob:Blob,ext:string) => {
+    if(!isNativeHost())return false;
+    const reader=new FileReader();const dataUrl=await new Promise<string>((resolve,reject)=>{reader.onload=()=>resolve(String(reader.result));reader.onerror=reject;reader.readAsDataURL(blob);});
+    useDownloadStore.getState().add({title:`${station?.name??"راديو"} — مقصوص`,artist:station?.name??"",cover:station?.coverUrl??null,kind:"clip",preset:"original",formatId:"local-clip",url:dataUrl,sourceUrl:streamUrl!,filename:`DON-MUSE-radio-${Date.now()}.${ext}`,mime:blob.type});return true;
+  };
   const triggerDownload = (blob: Blob, name: string) => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -212,9 +213,9 @@ export function RadioRecorder({ station, streamUrl, onClipsChange }: { station: 
     setBusy("download");
     toast(t("dlStarted"));
     try {
-      const blob = await makeClip();
+      const {blob,ext} = await makeClip();
       const r0 = sel ?? { start: chunksRef.current[0]?.t ?? 0, end: chunksRef.current[chunksRef.current.length - 1]?.t ?? 0 };
-      triggerDownload(blob, `${station.name.replace(/[\\/:*?"<>|]/g, "")} - clip ${formatTime(r0.start)}-${formatTime(r0.end)}.mp3`);
+      if(!await saveToDevice(blob,ext))triggerDownload(blob, `${station.name.replace(/[\\/:*?"<>|]/g, "")} - clip ${formatTime(r0.start)}-${formatTime(r0.end)}.${ext}`);
       toast.success(`${t("clipSaved")} · ${(blob.size / 1e6).toFixed(1)} MB`);
     } catch (err) {
       toast.error(`${t("dlFailed")}: ${(err as Error).message}`);
@@ -228,7 +229,7 @@ export function RadioRecorder({ station, streamUrl, onClipsChange }: { station: 
     setBusy("save");
     toast(t("dlStarted"));
     try {
-      const blob = await makeClip();
+      const {blob,ext} = await makeClip();
       let cover: string | null = station.coverUrl;
       // store as data URL so the favorite renders offline
       try {
@@ -251,7 +252,7 @@ export function RadioRecorder({ station, streamUrl, onClipsChange }: { station: 
       };
       await addClip(clip);
       const r1 = sel ?? { start: chunksRef.current[0]?.t ?? 0, end: chunksRef.current[chunksRef.current.length - 1]?.t ?? 0 };
-      triggerDownload(blob, `${station.name.replace(/[\\/:*?"<>|]/g, "")} - clip ${formatTime(r1.start)}-${formatTime(r1.end)}.mp3`);
+      if(!await saveToDevice(blob,ext))triggerDownload(blob, `${station.name.replace(/[\\/:*?"<>|]/g, "")} - clip ${formatTime(r1.start)}-${formatTime(r1.end)}.${ext}`);
       onClipsChange?.();
       toast.success(`${t("saveToClips")} ✓ ${(blob.size / 1e6).toFixed(1)} MB`);
     } catch (err) {
@@ -275,7 +276,6 @@ export function RadioRecorder({ station, streamUrl, onClipsChange }: { station: 
   return (
     <div className="glass-panel rounded-2xl p-4 sm:p-5" dir="ltr">
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={station.coverUrl} alt="" className="size-10 rounded-lg bg-white/5 object-cover" />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-sm font-bold">

@@ -1,4 +1,3 @@
-"use client";
 
 // Extracts dominant colors from an album art image via a tiny canvas sample,
 // and sets the --dynamic-* CSS variables that drive the ambient background.

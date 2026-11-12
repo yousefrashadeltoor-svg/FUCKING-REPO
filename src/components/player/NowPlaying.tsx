@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  NowPlaying — the expanded player.
@@ -23,7 +23,6 @@ import {
   Volume2,
   VolumeX,
   Heart,
-  Mic2,
   ListMusic,
   SlidersHorizontal,
   Info,
@@ -43,10 +42,8 @@ import { useT } from "@/lib/i18n";
 import { usePlayerStore } from "@/stores/player-store";
 import { useUIStore } from "@/stores/ui-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { nextNow, prevNow, seekNow, stopAllNow, toggleNow } from "@/lib/audio/controller";
+import { nextNow, prevNow, toggleNow } from "@/lib/audio/controller";
 import { shareTrack } from "@/lib/share";
-import { downloadUrl } from "@/lib/server/quran";
-import { enqueueTrack, useDownloadStore } from "@/stores/download-store";
 import { ProgressSlider } from "./ProgressSlider";
 import { EqualizerPanel } from "./EqualizerPanel";
 import { DownloadMenu } from "./DownloadMenu";
@@ -206,12 +203,11 @@ export function NowPlaying() {
   const liked = likedIds.includes(track.id);
   const dur = durationSec || track.durationSec || 0;
   const isQuran = track.source === "quran";
-  const quranParts = isQuran && track.sourceId ? track.sourceId.split(":") : null;
 
   const onLike = () => {
     toggleLike(track.id);
     if (track.id > 0) {
-      void fetch("/api/likes", {
+      void localFetch("/api/likes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackId: track.id }),
@@ -219,23 +215,6 @@ export function NowPlaying() {
     }
   };
 
-  const enqueue = () => {
-    if (isQuran && quranParts) {
-      const [nStr, code] = quranParts;
-      useDownloadStore.getState().add({
-        title: track.title,
-        artist: track.artistName,
-        cover: null,
-        kind: "quran",
-        preset: "mp3",
-        url: downloadUrl(Number(nStr), code),
-        filename: `AlQuran-${nStr}-${code}.mp3`,
-      });
-    } else {
-      enqueueTrack(track, "mp3-320");
-    }
-    toast(t("addBatch"));
-  };
 
   return (
     <>
@@ -258,7 +237,6 @@ export function NowPlaying() {
         />
         {track.coverUrl && (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={track.coverUrl}
               alt=""
@@ -324,7 +302,7 @@ export function NowPlaying() {
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 220, damping: 26 }}
-            className="relative aspect-square w-full max-w-[min(78vw,360px)]"
+            className="relative aspect-square w-full max-w-[min(88vw,520px)]"
           >
             <div
               className="absolute -inset-6 -z-10 rounded-[3rem] opacity-70 blur-3xl"
@@ -337,7 +315,7 @@ export function NowPlaying() {
               style={{ borderRadius: isPlaying ? undefined : "2rem" }}
             >
               {track.coverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
+
                 <img src={track.coverUrl} alt={track.title} className="size-full object-cover" draggable={false} />
               ) : (
                 <div className="grid size-full place-items-center bg-gradient-to-br from-white/15 to-white/5">

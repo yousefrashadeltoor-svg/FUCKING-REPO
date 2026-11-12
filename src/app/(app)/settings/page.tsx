@@ -1,4 +1,3 @@
-"use client";
 
 // Settings: playback (crossfade, autoplay, LUFS normalization), audio quality,
 // appearance (accent color, density), and language.
@@ -7,6 +6,7 @@ import { cn, EQ_PRESETS } from "@/lib/utils";
 import { usePlayerStore } from "@/stores/player-store";
 import { ACCENT_HEX, THEMES, useSettingsStore, type Accent, type Density, type Quality, type Theme } from "@/stores/settings-store";
 import { useT, type DictKey } from "@/lib/i18n";
+import { DeviceSettings } from "@/components/settings/DeviceSettings";
 
 const QUALITIES: { id: Quality; label: DictKey; desc: DictKey }[] = [
   { id: "auto", label: "qAuto", desc: "qAutoDesc" },
@@ -219,6 +219,7 @@ export default function SettingsPage() {
         </Row>
       </Section>
 
+      <DeviceSettings />
       <p className="mt-8 px-1 pb-6 text-center text-xs text-white/30">
         {t("shortcuts")}
       </p>

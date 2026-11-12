@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  TvPlayer — premium live TV player (hls.js):
@@ -17,7 +16,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
-import type { TvChannelDTO } from "@/lib/server/tv";
+import type { TvChannelDTO } from "@/lib/data/tv";
 import { usePlayerStore } from "@/stores/player-store";
 
 interface Props {
@@ -26,7 +25,7 @@ interface Props {
 }
 
 const proxied = (s: TvChannelDTO["streams"][number]) =>
-  `/api/tv/proxy?u=${encodeURIComponent(s.url)}${s.userAgent ? `&ua=${encodeURIComponent(s.userAgent)}` : ""}${s.referrer ? `&ref=${encodeURIComponent(s.referrer)}` : ""}`;
+  s.url;
 
 export function TvPlayer({ channel, onClose }: Props) {
   const t = useT();
@@ -201,7 +200,7 @@ export function TvPlayer({ channel, onClose }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [channel]);
 
   const togglePlay = () => {
@@ -315,7 +314,7 @@ export function TvPlayer({ channel, onClose }: Props) {
       {/* top bar */}
       <div className={cn("pointer-events-none absolute inset-x-0 top-0 flex items-center gap-3 bg-gradient-to-b from-black/80 to-transparent p-4 transition-opacity", controls ? "opacity-100" : "opacity-0")}>
         {channel.logo && (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={channel.logo} alt="" className="h-9 max-w-24 rounded-md bg-white/90 object-contain p-1" />
         )}
         <div className="min-w-0 flex-1">

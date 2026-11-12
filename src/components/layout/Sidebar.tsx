@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  Sidebar — premium navigation rail.
@@ -29,6 +29,7 @@ import {
   HardDrive,
   UserCheck,
   Activity,
+  AlarmClock,
   MoreHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -61,6 +62,7 @@ const PRIMARY: NavItem[] = [
 ];
 
 const SECONDARY: NavItem[] = [
+  { href: "/alarms", key: "alarms", icon: AlarmClock, tone: "text-amber-300" },
   { href: "/youtube-profile", key: "ytProfile", icon: UserCheck, tone: "text-red-400" },
   { href: "/diagnostics", key: "diagnostics", icon: Activity, tone: "text-teal-300" },
   { href: "/settings", key: "settings", icon: Settings, tone: "text-slate-300" },
@@ -78,7 +80,7 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!router) return;
-    void fetch("/api/playlists")
+    void localFetch("/api/playlists")
       .then((r) => (r.ok ? r.json() : []))
       .then((data: PlaylistDTO[]) => Array.isArray(data) && setPlaylists(data))
       .catch(() => {});
@@ -87,7 +89,7 @@ export function Sidebar() {
   const createPlaylist = async () => {
     const title = window.prompt(t("newPlaylist"));
     if (!title?.trim()) return;
-    const res = await fetch("/api/playlists", {
+    const res = await localFetch("/api/playlists", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: title.trim(), description: "DON MUSE" }),
@@ -153,7 +155,6 @@ export function Sidebar() {
     >
       <Link href="/" className={cn("mb-1 flex items-center gap-2.5", collapsed ? "justify-center" : "px-1 py-1.5")}>
         <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-gradient-to-br from-white to-white/80 shadow-lg shadow-black/40">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.svg" alt="DON MUSE" className="size-7" onError={(e) => ((e.currentTarget.style.display = "none"))} />
         </span>
         {!collapsed && (
@@ -219,7 +220,7 @@ export function Sidebar() {
             )}
           >
             {pl.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
+
               <img src={pl.coverUrl} alt="" className="size-6 shrink-0 rounded-md object-cover" />
             ) : (
               <ListMusic className="size-4 shrink-0" />

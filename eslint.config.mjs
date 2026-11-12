@@ -1,25 +1,19 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
-
-export default defineConfig([
-  // Keep the starter on the flat config export that actually runs under the pinned ESLint/Next toolchain.
-  ...nextCoreWebVitals,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import hooks from "eslint-plugin-react-hooks";
+export default tseslint.config(
+  { ignores: ["dist/**", "out/**", "android/**", "node_modules/**"] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": hooks },
     rules: {
-      // These two rules are React-Compiler experiments. The app legitimately
-      // syncs state from external systems (media elements, MediaStore, native
-      // bridge callbacks) inside effects and mirrors values in refs, so they
-      // fire on correct code. Real bugs are caught by typecheck + tests.
-      "react-hooks/set-state-in-effect": "off",
-      "react-hooks/refs": "off",
-      // Components defined inside a component (small icon/cell helpers) are a
-      // deliberate, widely used pattern in this UI and are stable per render.
-      "react-hooks/static-components": "off",
-      // These fire on documented, intentional mutations (motion values, DOM
-      // datasets, media elements) rather than on real state bugs.
-      "react-hooks/immutability": "off",
-      "react-hooks/purity": "off",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "no-empty": ["error", { allowEmptyCatch: true }],
     },
   },
-]);
+);

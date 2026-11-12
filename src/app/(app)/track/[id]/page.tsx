@@ -1,33 +1,6 @@
-import { notFound } from "next/navigation";
-import { getDemoUser, getTrackDTO } from "@/lib/server/queries";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { TrackLanding } from "@/components/tracks/TrackLanding";
-import type { Metadata } from "next";
-
-export const dynamic = "force-dynamic";
-
-type Ctx = { params: Promise<{ id: string }> };
-
-export async function generateMetadata({ params }: Ctx): Promise<Metadata> {
-  const { id } = await params;
-  const trackId = Number(id);
-  if (!Number.isInteger(trackId)) return {};
-  const user = await getDemoUser();
-  const track = await getTrackDTO(trackId, user.id);
-  if (!track) return {};
-  return {
-    title: `${track.title} — ${track.artistName}`,
-    description: `Listen to ${track.title} by ${track.artistName} on DON MUSE`,
-    openGraph: { title: `${track.title} — ${track.artistName}`, images: track.coverUrl ? [track.coverUrl] : [], type: "music.song" },
-  };
-}
-
-// Deep link: /track/:id opens the app on this song and starts playback.
-export default async function TrackPage({ params }: Ctx) {
-  const { id } = await params;
-  const trackId = Number(id);
-  if (!Number.isInteger(trackId)) notFound();
-  const user = await getDemoUser();
-  const track = await getTrackDTO(trackId, user.id);
-  if (!track) notFound();
-  return <TrackLanding track={track} />;
-}
+import { localFetch } from "@/lib/local/client";
+import type { TrackDTO } from "@/lib/types";
+export default function Page(){const {id}=useParams<{id:string}>();const [track,setTrack]=useState<TrackDTO|null>(null);const [error,setError]=useState("");useEffect(()=>{void localFetch(`/api/tracks/${id}`).then(async r=>{if(r.ok)setTrack(await r.json() as TrackDTO);else setError("هذا المقطع غير محفوظ على الجهاز. افتح مكتبته أولًا أو ابحث عنه.");});},[id]);return track?<TrackLanding track={track}/>:<p className="p-8 text-center text-sm text-white/60">{error||"جارٍ فتح المقطع…"}</p>;}

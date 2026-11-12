@@ -1,4 +1,3 @@
-"use client";
 
 // Developer / About page — Joseph M.R
 import { motion } from "framer-motion";
@@ -22,8 +21,6 @@ export default function AboutPage() {
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-6">
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/developer.jpg"
           alt="Joseph M.R"
@@ -64,7 +61,6 @@ export default function AboutPage() {
         <div className="flex flex-col gap-4">
           <div className="glass-panel rounded-2xl p-5">
             <div className="flex items-center gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo.svg" alt="DON MUSE" className="size-14 rounded-2xl shadow-lg" />
               <div>
                 <p className="text-lg font-black tracking-tight">DON MUSE</p>

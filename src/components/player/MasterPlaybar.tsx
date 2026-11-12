@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  MasterPlaybar — the single floating player bar (web + Android).
@@ -113,7 +113,7 @@ export function MasterPlaybar() {
     if (!track) return;
     toggleLike(track.id);
     if (track.id > 0) {
-      void fetch("/api/likes", {
+      void localFetch("/api/likes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackId: track.id }),
@@ -162,10 +162,10 @@ export function MasterPlaybar() {
                 aria-label={t("expand")}
               >
                 {track.coverUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={track.coverUrl} alt="" className="size-11 rounded-xl object-cover shadow-lg sm:size-12" />
+
+                  <img src={track.coverUrl} alt="" className="size-14 rounded-xl object-cover shadow-lg sm:size-16" />
                 ) : (
-                  <span className="grid size-11 place-items-center rounded-xl bg-gradient-to-br from-white/15 to-white/5 sm:size-12">
+                  <span className="grid size-14 place-items-center rounded-xl bg-gradient-to-br from-white/15 to-white/5 sm:size-16">
                     <AudioWaveform className="size-5 text-white/70" />
                   </span>
                 )}

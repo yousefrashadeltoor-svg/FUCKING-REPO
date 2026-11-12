@@ -1,4 +1,3 @@
-"use client";
 
 // Global overlays, in strict z-order:
 //   NowPlaying (70) → InfoSheet (92) → Shortcuts (95)

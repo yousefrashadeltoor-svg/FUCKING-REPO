@@ -1,461 +1,235 @@
-// ============================================================================
-//  DON MUSE — platform bridge
-//  ---------------------------------------------------------------------------
-//  The SAME web app runs in two hosts:
-//    • a browser / PWA            → everything is done with web APIs
-//    • the DON MUSE Android app   → the WebView is only the UI; real work is
-//                                   delegated to native code through the
-//                                   `DonMuseNative` javascript interface
-//                                   (ExoPlayer + MediaSession, MediaStore scan,
-//                                   app-private storage, widgets, download
-//                                   manager, SQLite).
-//
-//  Nothing here ever *pretends* to work: if the native interface is missing,
-//  `isNative` is false and the web implementation is used instead.
-// ============================================================================
+// Secure, local-first Android bridge. The random capability is injected only
+// into the bundled app document; remote frames cannot invoke native methods.
+import type { DownloadFormatDTO, TrackDTO } from "@/lib/types";
 
 export interface DeviceSongDTO {
-  id: string; // MediaStore id (string so it survives JSON)
-  uri: string; // content://media/external/audio/media/123
-  title: string;
-  artist: string;
-  artistId: string | null;
-  album: string;
-  albumId: string | null;
-  albumArtUri: string | null;
-  durationMs: number;
-  mimeType: string;
-  sizeBytes: number;
-  dateAdded: number;
-  trackNumber: number;
-  year: number;
-  isVideo: boolean;
+  id: string; uri: string; title: string; artist: string; artistId: string | null;
+  album: string; albumId: string | null; albumArtUri: string | null;
+  durationMs: number; mimeType: string; sizeBytes: number; dateAdded: number;
+  trackNumber: number; year: number; isVideo: boolean;
 }
-
-export interface ResolvedStream {
-  /** absolute URL the native player can open directly */
-  url: string;
-  /** true when the URL is a direct media file (not a playlist/manifest) */
-  direct: boolean;
-  /** mime type reported by the server */
-  mime: string | null;
-  /** iframe fallback (YouTube embed) when no direct URL exists */
-  embed: string | null;
-}
-
+export interface ResolvedStream { url: string; direct: boolean; mime: string | null; embed: string | null; headers?: Record<string,string>; expiry?: number }
 export interface NativePlaybackState {
-  playing: boolean;
-  buffering: boolean;
-  positionMs: number;
-  durationMs: number;
-  itemId: string | null;
-  index: number;
-  queueLength: number;
+  playing: boolean; buffering: boolean; positionMs: number; durationMs: number;
+  itemId: string | null; index: number; queueLength: number; error?: string | null;
+  ended?: boolean; audioSessionId?: number; track?: TrackDTO | null;
 }
-
-interface DonMuseNativeInterface {
-  readonly isAndroid?: boolean;
-  platformInfo(): string;
-  requestPermissions(kinds: string): string;
-  hasPermission(kind: string): string;
-  scanMedia(kind: string): string;
-  storeGet(key: string): string;
-  storeSet(key: string, value: string): string;
-  storeRemove(key: string): string;
-  storeKeys(): string;
-  playQueue(json: string): string;
-  playPause(): string;
-  next(): string;
-  previous(): string;
-  seekTo(ms: number): string;
-  stopPlayback(): string;
-  setVolume(volume: number): string;
-  setRate(rate: number): string;
-  playbackState(): string;
-  updateMediaMetadata(uri: string, json: string): string;
-  saveArtwork(uri: string, base64: string): string;
-  downloadToMusic(url: string, filename: string, mime: string): string;
-  downloadStatus(id: string): string;
-  cancelDownload(id: string): string;
-  refreshWidgets(): string;
-  toast(message: string): string;
-  vibrate(ms: number): string;
-  openExternal(url: string): string;
-  setSleepTimer(ms: number): string;
-  diagnostics(): string;
-  setPlaybackChangedCallback(name: string): string;
-  setDownloadCallback(name: string): string;
+export interface NativeQueueItem {
+  id: string; uri: string; title: string; artist: string; album: string;
+  artUri?: string | null; durationMs?: number; remote?: boolean;
+  headers?: Record<string,string>; resolveUrl?: string; mime?: string; track?: TrackDTO;
 }
-
+export interface FormatsResult {
+  source: string; sourceUrl: string; title: string; durationSec: number; coverUrl: string | null;
+  extractor: string; note: string | null; video: DownloadFormatDTO[]; audio: DownloadFormatDTO[];
+}
+export interface DownloadJob {
+  id: string; title: string; artist: string; cover: string | null; sourceUrl: string;
+  kind?: "full" | "clip" | "quran";
+  url: string; filename: string; mime: string; formatId: string; preset: string;
+  status: "queued" | "working" | "paused" | "done" | "error"; progress: number;
+  received: number; total: number; error: string | null; uri?: string; size?: number;
+  startSec?: number; endSec?: number; headers?: Record<string,string>; addedAt: number;
+}
+export type MediaPerm = "audio" | "video" | "images" | "notifications" | "exactAlarm";
+interface NativeRaw {
+  [method: string]: ((token: string, ...args: (string | number)[]) => string) | undefined;
+}
 declare global {
   interface Window {
-    DonMuseNative?: DonMuseNativeInterface;
-    donmuseNative?: Record<string, (...args: unknown[]) => void>;
+    __DM_NATIVE_TOKEN__?: string;
+    DonMuseNative?: NativeRaw;
+    donmuseNative?: Record<string, (payload: unknown) => void>;
+    __donmuseNativeEvent?: (name: string, payload: string) => void;
+    __donmuseNativeReply?: (id: string, ok: boolean, payload: string) => void;
   }
 }
+const emptyState = (): NativePlaybackState => ({ playing:false, buffering:false, positionMs:0, durationMs:0, itemId:null, index:-1, queueLength:0 });
+let cachedState = emptyState();
+const stateListeners = new Set<(s: NativePlaybackState) => void>();
+const asyncJobs = new Map<string, { resolve: (s: string) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+let seq = 0;
 
-function bridge(): DonMuseNativeInterface | null {
-  if (typeof window === "undefined") return null;
-  const b = window.DonMuseNative;
-  return b && typeof b.storeGet === "function" ? b : null;
-}
-
-function safe<T>(fn: () => T, fallback: T): T {
-  try {
-    return fn();
-  } catch {
-    return fallback;
-  }
-}
-
+export const isNativeHost = (): boolean => typeof window !== "undefined" && !!window.__DM_NATIVE_TOKEN__ && !!window.DonMuseNative;
 function parse<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
+  try { return JSON.parse(raw) as T; } catch { return fallback; }
+}
+function call<T>(method: string, args: (string | number)[], fallback: T): T {
+  if (!isNativeHost()) return fallback;
   try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+    const fn = window.DonMuseNative?.[method];
+    if (typeof fn !== "function") return fallback;
+    return parse(fn(window.__DM_NATIVE_TOKEN__!, ...args), fallback);
+  } catch { return fallback; }
 }
 
-export const isNativeHost = (): boolean => !!bridge();
-
-/** Platform label used by the UI + diagnostics. */
-export function platformName(): string {
-  const b = bridge();
-  if (b) {
-    const info = parse<{ platform?: string }>(safe(() => b.platformInfo(), ""), {});
-    return info.platform ?? "android";
-  }
-  if (typeof navigator === "undefined") return "server";
-  return /android/i.test(navigator.userAgent) ? "android-web" : "web";
+if (typeof window !== "undefined") {
+  window.donmuseNative ??= {};
+  window.__donmuseNativeReply = (id, ok, payload) => {
+    const job = asyncJobs.get(id);
+    if (!job) return;
+    clearTimeout(job.timer); asyncJobs.delete(id);
+    if (ok) job.resolve(payload); else job.reject(new Error(payload || "تعذّر تنفيذ العملية على الجهاز"));
+  };
+  window.__donmuseNativeEvent = (name, payload) => {
+    if (name === "playback") {
+      cachedState = { ...emptyState(), ...parse<NativePlaybackState>(payload, emptyState()) };
+      stateListeners.forEach(cb => cb(cachedState));
+    }
+    window.dispatchEvent(new CustomEvent(`donmuse:native:${name}`, { detail: parse<unknown>(payload, null) }));
+    window.donmuseNative?.[name]?.(payload);
+  };
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Permissions + media library (Android only — the browser has no device DB)  */
-/* -------------------------------------------------------------------------- */
-
-export type MediaPerm = "audio" | "video" | "images" | "notifications";
-
-export function requestMediaPermissions(kinds: MediaPerm[] = ["audio", "video", "notifications"]): boolean {
-  const b = bridge();
-  if (!b) return false;
-  const res = parse<{ granted?: string[]; denied?: string[] }>(
-    safe(() => b.requestPermissions(kinds.join(",")), '{"denied":[]}'),
-    {},
-  );
-  return (res.denied?.length ?? 0) === 0;
+export function nativeRequest<T>(method: string, args: Record<string, unknown> = {}, timeoutMs = 45_000): Promise<T> {
+  if (!isNativeHost()) return Promise.reject(new Error("هذه الإمكانية متاحة في تطبيق أندرويد"));
+  return new Promise<T>((resolve, reject) => {
+    const id = `dm-${Date.now()}-${++seq}`;
+    const timer = setTimeout(() => { asyncJobs.delete(id); reject(new Error("انتهت مهلة العملية؛ حاول مرة أخرى")); }, timeoutMs);
+    asyncJobs.set(id, { resolve: raw => resolve(parse<T>(raw, null as T)), reject, timer });
+    try {
+      const fn = window.DonMuseNative?.requestAsync;
+      if (typeof fn !== "function") throw new Error("جسر أندرويد غير متاح");
+      const ack = parse<{ok:boolean;error?:string}>(fn(window.__DM_NATIVE_TOKEN__!, id, method, JSON.stringify(args)), {ok:false});
+      if (!ack.ok) throw new Error(ack.error || "العملية غير مدعومة");
+    } catch (e) { clearTimeout(timer); asyncJobs.delete(id); reject(e instanceof Error ? e : new Error(String(e))); }
+  });
 }
 
-export function hasMediaPermission(kind: MediaPerm): boolean {
-  const b = bridge();
-  if (!b) return false;
-  return safe(() => b.hasPermission(kind), "false") === "true";
+export function platformName(): string { return isNativeHost() ? "android" : typeof navigator !== "undefined" && /android/i.test(navigator.userAgent) ? "android-web" : "web"; }
+export function platformInfo(): Record<string, unknown> { return call("platformInfo", [], {}); }
+export async function requestMediaPermissions(kinds: MediaPerm[] = ["audio"]): Promise<boolean> {
+  if (!isNativeHost()) return false;
+  try { const r = await nativeRequest<{denied:string[]}>("permissions", {kinds}, 180_000); return r.denied.length === 0; } catch { return false; }
 }
+export function hasMediaPermission(kind: MediaPerm): boolean { return call("hasPermission", [kind], false); }
+export function openPermissionSettings(kind: MediaPerm): void { call("openPermissionSettings", [kind], ""); }
+export async function scanDeviceMedia(kind: "audio" | "video"): Promise<DeviceSongDTO[]> { return nativeRequest<DeviceSongDTO[]>("scanMedia", {kind}, 60_000); }
+export async function pickNativeMedia(): Promise<DeviceSongDTO[]> { return nativeRequest<DeviceSongDTO[]>("pickMedia", {}, 180_000); }
+export async function pickNativeImage(): Promise<string> { return nativeRequest<string>("pickImage", {}, 180_000); }
 
-/** Real MediaStore scan — no upload, no copy, files stay where they are. */
-export function scanDeviceMedia(kind: "audio" | "video"): DeviceSongDTO[] {
-  const b = bridge();
-  if (!b) return [];
-  return parse<DeviceSongDTO[]>(safe(() => b.scanMedia(kind), "[]"), []);
+function absoluteMediaUrl(raw: string): string {
+  if (/^(https?|content|file):/.test(raw)) return raw;
+  if (raw.startsWith("/")) return new URL(raw, window.location.origin).toString();
+  return raw;
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Native playback (ExoPlayer + MediaSession)                                */
-/* -------------------------------------------------------------------------- */
-
-export interface NativeQueueItem {
-  id: string;
-  uri: string;
-  title: string;
-  artist: string;
-  album: string;
-  artUri?: string | null;
-  durationMs?: number;
-  /** true for remote (http/https) streams: Quran, radio, cloud tracks */
-  remote?: boolean;
+function queueItem(t: TrackDTO, uri = t.streamUrl): NativeQueueItem {
+  const sourceUrl = t.source === "youtube" && t.sourceId ? `https://www.youtube.com/watch?v=${encodeURIComponent(t.sourceId)}` : absoluteMediaUrl(uri);
+  const needsResolver = /^(youtube|soundcloud|bandcamp|dailymotion|odysee)$/.test(t.source) && !/^content:/.test(uri);
+  return { id:String(t.id), uri:needsResolver ? `donmuse-resolve:${sourceUrl}` : absoluteMediaUrl(uri), title:t.title, artist:t.artistName,
+    album:t.albumTitle ?? "", artUri:t.coverUrl, durationMs:Math.round(t.durationSec*1000),
+    remote:/^https?:/.test(uri), resolveUrl:needsResolver ? sourceUrl : undefined, mime:t.mimeType };
 }
 
 export const nativePlayback = {
-  get active(): boolean {
-    const b = bridge();
-    if (!b) return false;
-    const s = parse<NativePlaybackState>(safe(() => b.playbackState(), "{}"), {} as NativePlaybackState);
-    return !!s.itemId;
+  get active() { return !!cachedState.itemId; },
+  canHandle(track: {streamUrl?:string; source?:string; codec?:string}) {
+    return isNativeHost() && track.codec !== "iframe" && /^(https?|content|file|donmuse-resolve):/.test(track.streamUrl ?? "");
   },
-
-  /** Can the native player take this track? Local files + remote http(s) audio. */
-  canHandle(track: { streamUrl?: string; source?: string }): boolean {
-    const b = bridge();
-    if (!b) return false;
-    const url = track.streamUrl ?? "";
-    if (!url) return false;
-    if (url.startsWith("content://") || url.startsWith("file://")) return true;
-    if (url.startsWith("http://") || url.startsWith("https://")) return true;
-    // Absolute app URLs (/api/...) become absolute against the app origin.
-    if (url.startsWith("/")) return true;
-    return false;
+  async resolve(track: TrackDTO): Promise<ResolvedStream | null> {
+    if (!isNativeHost()) return null;
+    if (/^(content|file):/.test(track.streamUrl)) return {url:track.streamUrl,direct:true,mime:track.mimeType ?? null,embed:null};
+    const url = track.source === "youtube" && track.sourceId ? `https://www.youtube.com/watch?v=${encodeURIComponent(track.sourceId)}` : absoluteMediaUrl(track.streamUrl);
+    try { return await nativeRequest<ResolvedStream>("resolveStream", {url, source:track.source}, 60_000); } catch { return null; }
   },
-
-  /**
-   * Ask the server for a DIRECT media URL for a catalog track, so ExoPlayer can
-   * stream it itself and keep playing in the background. Returns null on the web
-   * (the browser already plays through <audio>/YouTube).
-   */
-  async resolve(trackId: number, appOrigin?: string): Promise<ResolvedStream | null> {
-    const b = bridge();
-    if (!b || !Number.isFinite(trackId)) return null;
-    try {
-      // On Android the UI may be served from file:// — use the server origin.
-      const info = parse<{ server?: string }>(safe(() => b.platformInfo(), "{}"), {});
-      const origin = appOrigin ?? (info.server && /^https?:/.test(info.server) ? info.server : window.location.origin);
-      const res = await fetch(`${origin}/api/tracks/${trackId}/stream?resolve=1`, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      if (!res.ok) return null;
-      const data = (await res.json()) as { url?: string; mime?: string; embed?: string; direct?: boolean };
-      if (!data.url && !data.embed) return null;
-      return {
-        url: data.url ? (data.url.startsWith("/") ? `${origin}${data.url}` : data.url) : "",
-        direct: data.direct !== false,
-        mime: data.mime ?? null,
-        embed: data.embed ?? null,
-      };
-    } catch {
-      return null;
-    }
+  load(track: TrackDTO, opts: {autoplay?:boolean; startAt?:number; uri?:string; queue?:NativeQueueItem[]; queueIndex?:number} = {}) {
+    const item = queueItem(track, opts.uri);
+    call("playQueue", [JSON.stringify({items:opts.queue?.length ? opts.queue : [item],index:opts.queueIndex ?? 0,autoplay:opts.autoplay !== false,startAtMs:Math.round((opts.startAt ?? 0)*1000),tracks:[track]})], "");
   },
-
-  load(
-    track: {
-      id: number;
-      title: string;
-      artistName: string;
-      albumTitle: string | null;
-      coverUrl: string | null;
-      durationSec: number;
-      streamUrl: string;
-      source: string;
-    },
-    opts: { autoplay?: boolean; startAt?: number; uri?: string; queue?: NativeQueueItem[] } = {},
-  ): void {
-    const b = bridge();
-    if (!b) return;
-    const raw = opts.uri ?? track.streamUrl;
-    const uri = raw.startsWith("/") ? new URL(raw, window.location.origin).toString() : raw;
-    const item: NativeQueueItem = {
-      id: String(track.id),
-      uri,
-      title: track.title,
-      artist: track.artistName,
-      album: track.albumTitle ?? "",
-      artUri: track.coverUrl && /^https?:/.test(track.coverUrl) ? track.coverUrl : null,
-      durationMs: Math.max(0, Math.round(track.durationSec * 1000)),
-      remote: /^https?:/.test(uri),
-    };
-    safe(
-      () =>
-        b.playQueue(
-          JSON.stringify({
-            items: opts.queue && opts.queue.length ? opts.queue : [item],
-            index: 0,
-            autoplay: opts.autoplay !== false,
-            startAtMs: Math.max(0, Math.round((opts.startAt ?? 0) * 1000)),
-            volume: 1,
-          }),
-        ),
-      "",
-    );
+  queue(tracks: TrackDTO[], index: number, autoplay = true) {
+    const items = tracks.filter(t => t.codec !== "iframe" && /^(https?|content|file):/.test(t.streamUrl)).map(t => queueItem(t));
+    call("playQueue", [JSON.stringify({items,index,autoplay,startAtMs:0})], "");
   },
-
-  play(): void {
-    const b = bridge();
-    if (b) safe(() => b.playPause(), "");
-  },
-  pause(): void {
-    const b = bridge();
-    if (b) safe(() => b.playPause(), "");
-  },
-  next(): void {
-    const b = bridge();
-    if (b) safe(() => b.next(), "");
-  },
-  previous(): void {
-    const b = bridge();
-    if (b) safe(() => b.previous(), "");
-  },
-  stop(): void {
-    const b = bridge();
-    if (b) safe(() => b.stopPlayback(), "");
-  },
-  seek(sec: number): void {
-    const b = bridge();
-    if (b) safe(() => b.seekTo(Math.max(0, Math.round(sec * 1000))), "");
-  },
-  setVolume(v: number): void {
-    const b = bridge();
-    if (b) safe(() => b.setVolume(Math.max(0, Math.min(1, v))), "");
-  },
-  setRate(r: number): void {
-    const b = bridge();
-    if (b) safe(() => b.setRate(r), "");
-  },
-  fadeOut(_seconds: number): void {
-    // The native service handles fade + stop internally on the sleep timer.
-    const b = bridge();
-    if (b) safe(() => b.setVolume(0), "");
-  },
-  state(): NativePlaybackState {
-    const b = bridge();
-    if (!b) return { playing: false, buffering: false, positionMs: 0, durationMs: 0, itemId: null, index: -1, queueLength: 0 };
-    return parse<NativePlaybackState>(safe(() => b.playbackState(), "{}"), {
-      playing: false,
-      buffering: false,
-      positionMs: 0,
-      durationMs: 0,
-      itemId: null,
-      index: -1,
-      queueLength: 0,
-    });
-  },
-  get position(): number {
-    return nativePlayback.state().positionMs / 1000;
-  },
-  get duration(): number {
-    return nativePlayback.state().durationMs / 1000;
-  },
-  get isPlaying(): boolean {
-    return nativePlayback.state().playing;
-  },
-  setSleepTimer(ms: number): void {
-    const b = bridge();
-    if (b) safe(() => b.setSleepTimer(ms), "");
-  },
-  /** Subscribe to native state pushes (notification / lock-screen / widget). */
-  onState(cb: (state: NativePlaybackState) => void): () => void {
-    if (typeof window === "undefined") return () => {};
-    const registry = (window.donmuseNative ??= {});
-    const name = `__donmusePlayback_${Math.random().toString(36).slice(2)}`;
-    registry[name] = (val) => cb(typeof val === "string" ? (JSON.parse(val) as NativePlaybackState) : (val as NativePlaybackState));
-    const b = bridge();
-    if (b) safe(() => b.setPlaybackChangedCallback(name), "");
-    return () => {
-      delete registry[name];
-    };
-  },
+  updateQueue(items: NativeQueueItem[], index: number) { call("updateQueue", [JSON.stringify({queue:{items,index}})], ""); },
+  play() { call("play", [], ""); },
+  pause() { call("pause", [], ""); },
+  next() { call("next", [], ""); },
+  previous() { call("previous", [], ""); },
+  stop() { call("stopPlayback", [], ""); cachedState = emptyState(); },
+  seek(sec: number) { call("seekTo", [Math.max(0,Math.round(sec*1000))], ""); },
+  setVolume(v: number) { call("setVolume", [Math.max(0,Math.min(1,v))], ""); },
+  setRate(r: number) { call("setRate", [r], ""); },
+  setEq(bands: number[]) { call("setEq", [JSON.stringify(bands)], ""); },
+  setRepeat(mode: "off"|"all"|"one") { call("setRepeat", [mode], ""); },
+  setShuffle(value: boolean) { call("setShuffle", [value ? "1" : "0"], ""); },
+  fadeOut(seconds: number) { call("fadeOut", [seconds], ""); },
+  state() { return cachedState; },
+  refresh() { cachedState = call<NativePlaybackState>("playbackState", [], emptyState()); stateListeners.forEach(cb => cb(cachedState)); return cachedState; },
+  get position() { return cachedState.positionMs/1000; },
+  get duration() { return cachedState.durationMs/1000; },
+  get isPlaying() { return cachedState.playing; },
+  setSleepTimer(ms: number) { call("setSleepTimer", [ms], ""); },
+  onState(cb: (state: NativePlaybackState) => void) { stateListeners.add(cb); return () => { stateListeners.delete(cb); }; },
 };
-
-/* -------------------------------------------------------------------------- */
-/*  App-private persistent storage (SharedPreferences in the Android app)      */
-/* -------------------------------------------------------------------------- */
 
 export const nativeStore = {
-  get available(): boolean {
-    return !!bridge();
-  },
-  get(key: string): string | null {
-    const b = bridge();
-    if (!b) return null;
-    const v = safe(() => b.storeGet(key), "");
-    return v === "" ? null : v;
-  },
-  set(key: string, value: string): void {
-    const b = bridge();
-    if (b) safe(() => b.storeSet(key, value), "");
-  },
-  remove(key: string): void {
-    const b = bridge();
-    if (b) safe(() => b.storeRemove(key), "");
-  },
-  keys(): string[] {
-    const b = bridge();
-    if (!b) return [];
-    return parse<string[]>(safe(() => b.storeKeys(), "[]"), []);
-  },
+  get available() { return isNativeHost(); },
+  get(key: string): string|null { const v = call("storeGet", [key], ""); return v === "" ? null : v; },
+  set(key: string, value: string) { call("storeSet", [key,value], ""); },
+  remove(key: string) { call("storeRemove", [key], ""); },
+  keys(): string[] { return call("storeKeys", [], []); },
 };
-
-/* -------------------------------------------------------------------------- */
-/*  Library extras                                                            */
-/* -------------------------------------------------------------------------- */
-
-/** Apply metadata edits to the REAL file row (MediaStore) on Android. */
-export function updateDeviceMetadata(
-  uri: string,
-  meta: { title?: string; artist?: string; album?: string; year?: number },
-): { ok: boolean; message: string } {
-  const b = bridge();
-  if (!b) return { ok: false, message: "Editing the device library requires the Android app." };
-  return parse<{ ok: boolean; message: string }>(
-    safe(() => b.updateMediaMetadata(uri, JSON.stringify(meta)), '{"ok":false,"message":"failed"}'),
-    { ok: false, message: "failed" },
-  );
+export async function updateDeviceMetadata(uri: string, meta: {title?:string;artist?:string;album?:string;year?:number}) {
+  return nativeRequest<{ok:boolean;message:string}>("updateMediaMetadata", {uri,meta});
 }
-
-/** Replace embedded artwork of a device track (written into the real file). */
-export function writeDeviceArtwork(uri: string, base64: string): { ok: boolean; message: string } {
-  const b = bridge();
-  if (!b) return { ok: false, message: "Artwork writing requires the Android app." };
-  return parse<{ ok: boolean; message: string }>(
-    safe(() => b.saveArtwork(uri, base64), '{"ok":false,"message":"failed"}'),
-    { ok: false, message: "failed" },
-  );
+export async function writeDeviceArtwork(uri: string, base64: string) {
+  return nativeRequest<{ok:boolean;message:string}>("saveArtwork", {uri,base64});
 }
-
-/** Save a remote audio file into the device Music collection (real download). */
+export function resolveTrackFormats(track: TrackDTO): Promise<FormatsResult> {
+  const url = track.source === "youtube" && track.sourceId ? `https://www.youtube.com/watch?v=${encodeURIComponent(track.sourceId)}` : absoluteMediaUrl(track.streamUrl);
+  return nativeRequest<FormatsResult>("resolveFormats", {url,title:track.title,cover:track.coverUrl}, 90_000);
+}
+export function resolveLinkFormats(url: string): Promise<FormatsResult> { return nativeRequest<FormatsResult>("resolveFormats", {url}, 90_000); }
+export function enqueueNativeDownload(job: Partial<DownloadJob> & {sourceUrl:string;filename:string}): Promise<DownloadJob> {
+  return nativeRequest<DownloadJob>("enqueueDownload", {job}, 30_000);
+}
+export function nativeDownloads(): DownloadJob[] { return call("downloadJobs", [], []); }
+export function downloadAction(id: string, action: "cancel"|"pause"|"resume"|"retry"): Promise<DownloadJob | null> { return nativeRequest("downloadAction", {id,action}); }
 export function downloadToDeviceLibrary(url: string, filename: string, mime = "audio/mpeg"): string {
-  const b = bridge();
-  if (!b) return "";
-  return safe(() => b.downloadToMusic(url, filename, mime), "");
+  void enqueueNativeDownload({sourceUrl:url,url,filename,mime,title:filename,formatId:"original",preset:"original"}).catch(() => {});
+  return "queued";
 }
-
-export function refreshWidgets(): void {
-  const b = bridge();
-  if (b) safe(() => b.refreshWidgets(), "");
-}
-
-export function vibrate(ms = 12): void {
-  const b = bridge();
-  if (b) {
-    safe(() => b.vibrate(ms), "");
-    return;
-  }
-  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-    try {
-      navigator.vibrate(ms);
-    } catch {
-      /* unsupported */
-    }
-  }
-}
-
+export function refreshWidgets(): void { call("refreshWidgets", [], ""); }
+export function vibrate(ms = 12): void { if (isNativeHost()) call("vibrate", [ms], ""); else navigator.vibrate?.(ms); }
 export function openExternal(url: string): void {
-  const b = bridge();
-  if (b) {
-    safe(() => b.openExternal(url), "");
-    return;
-  }
-  if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
+  if (!/^https?:\/\//i.test(url)) return;
+  if (isNativeHost()) call("openExternal", [url], ""); else window.open(url,"_blank","noopener,noreferrer");
+}
+export function nativeToast(message: string): void { call("toast", [message], ""); }
+export function nativeDiagnostics(): Record<string,unknown> {
+  if (isNativeHost()) return call("diagnostics", [], {});
+  return {platform:platformName(),online:navigator.onLine,cores:navigator.hardwareConcurrency,screen:`${screen.width}x${screen.height}`,storage:"device-local"};
+}
+export async function nativeSearch(query: string, source = "youtube"): Promise<TrackDTO[]> { return nativeRequest<TrackDTO[]>("searchMedia", {query,source}, 60_000); }
+export async function onlineJson<T>(url: string): Promise<T> {
+  if (isNativeHost()) return nativeRequest<T>("httpJson", {url}, 60_000);
+  const r = await fetch(url,{signal:AbortSignal.timeout(20_000)});
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json() as Promise<T>;
+}
+export interface NativeAlarm { id:string; at:number; label:string; repeatDays:number[]; soundUri:string|null; enabled:boolean }
+export function scheduleNativeAlarm(alarm: NativeAlarm): Promise<NativeAlarm> { return nativeRequest("scheduleAlarm", {alarm}); }
+export function cancelNativeAlarm(id: string): Promise<boolean> { return nativeRequest("cancelAlarm", {id}); }
+export function nativeAlarms(): NativeAlarm[] { return call("alarms", [], []); }
+export function openExactAlarmSettings(): void { call("openPermissionSettings", ["exactAlarm"], ""); }
+export function showNativeNotification(title: string, body: string): Promise<boolean> { return nativeRequest("notify", {title,body}); }
+export function openBatterySettings(): void { call("openBatterySettings", [], ""); }
+export function requestWidgetPin(): Promise<boolean> { return nativeRequest("pinWidget", {}); }
+
+/** Lossless local edit of a captured radio buffer. Never uploads the recording. */
+export function transcodeRadioClip(input: Blob, startSec: number, endSec: number): Promise<Blob> {
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();reader.onerror=()=>reject(new Error("تعذّر قراءة التسجيل"));
+    reader.onload=async()=>{try{const base64=String(reader.result).split(",")[1];const r=await nativeRequest<{base64:string;mime:string}>("transcodeClip",{base64,mime:input.type,startSec,endSec},180_000);const bytes=Uint8Array.from(atob(r.base64),c=>c.charCodeAt(0));resolve(new Blob([bytes],{type:r.mime}));}catch(e){reject(e);}};reader.readAsDataURL(input);
+  });
 }
 
-export function nativeToast(message: string): void {
-  const b = bridge();
-  if (b) safe(() => b.toast(message), "");
+/** Copy a saved browser clip into app-private storage so ExoPlayer can outlive
+ * the WebView. Blob URLs are document-scoped and must never enter a restore queue. */
+export async function nativeClipUri(id: string, blob: Blob): Promise<string> {
+  const base64 = await new Promise<string>((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(",")[1] ?? "");r.onerror=()=>reject(new Error("تعذّر قراءة المقطع"));r.readAsDataURL(blob);});
+  const result=await nativeRequest<{uri:string}>("openLocalClip",{id,base64,mime:blob.type},60_000);
+  return result.uri;
 }
-
-/** Runtime diagnostics reported by the native host (or the browser). */
-export function nativeDiagnostics(): Record<string, unknown> {
-  const b = bridge();
-  if (b) return parse<Record<string, unknown>>(safe(() => b.diagnostics(), "{}"), {});
-  if (typeof navigator === "undefined") return {};
-  const nav = navigator as Navigator & { deviceMemory?: number; hardwareConcurrency?: number };
-  return {
-    platform: platformName(),
-    userAgent: nav.userAgent,
-    language: nav.language,
-    online: nav.onLine,
-    cores: nav.hardwareConcurrency ?? null,
-    deviceMemoryGb: nav.deviceMemory ?? null,
-    screen: typeof window !== "undefined" ? `${window.screen.width}x${window.screen.height}@${window.devicePixelRatio}` : null,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  };
-}
+export async function deleteNativeClip(id: string): Promise<void> { if(isNativeHost()) await nativeRequest("deleteLocalClip",{id}); }

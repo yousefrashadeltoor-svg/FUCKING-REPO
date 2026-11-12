@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // Save / unsave an album (persisted via /api/albums/like).
 import { useState } from "react";
@@ -16,7 +16,7 @@ export function AlbumLikeButton({ albumId, initial, compact = false }: { albumId
     const next = !liked;
     setLiked(next);
     try {
-      const res = await fetch("/api/albums/like", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ albumId }) });
+      const res = await localFetch("/api/albums/like", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ albumId }) });
       const d = (await res.json()) as { liked?: boolean };
       if (typeof d.liked === "boolean") {
         setLiked(d.liked);

@@ -1,3 +1,4 @@
+import { localFetch } from "@/lib/local/client";
 // Network state (online/offline + measured throughput) shared across the app.
 import { create } from "zustand";
 
@@ -26,7 +27,7 @@ export async function pingLatency(): Promise<number | null> {
   if (typeof window === "undefined") return null;
   const start = performance.now();
   try {
-    await fetch("/api/health", { method: "HEAD", cache: "no-store" });
+    await localFetch("/api/health", { method: "HEAD", cache: "no-store" });
     const ms = Math.round(performance.now() - start);
     useNetworkStore.getState().setLatency(ms);
     return ms;

@@ -1,4 +1,3 @@
-"use client";
 
 // 10-band graphic equalizer panel with presets. Bands map to WebAudio
 // BiquadFilter peaking nodes inside the UniversalPlaybackEngine.

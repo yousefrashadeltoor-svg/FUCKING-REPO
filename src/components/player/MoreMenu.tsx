@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  MoreMenu — the "•••" playbar menu rendered in a portal and positioned

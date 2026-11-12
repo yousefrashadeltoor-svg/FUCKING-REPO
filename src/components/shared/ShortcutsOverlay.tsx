@@ -1,4 +1,3 @@
-"use client";
 
 // Keyboard shortcuts reference (? key or the ⓘ in the playbar).
 import { X, Keyboard } from "lucide-react";

@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  «ملفي الشخصي على YouTube» — the user's REAL YouTube Music account.
@@ -97,7 +97,7 @@ function Inner() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/youtube/me", { cache: "no-store" });
+      const res = await localFetch("/api/youtube/me", { cache: "no-store" });
       setData((await res.json()) as MePayload);
     } catch {
       setData({ connected: false, configured: true, reason: "network" });
@@ -120,7 +120,7 @@ function Inner() {
   const disconnect = async () => {
     setBusy(true);
     try {
-      await fetch("/api/youtube/disconnect", { method: "POST" });
+      await localFetch("/api/youtube/disconnect", { method: "POST" });
       toast.success(t("ytDisconnect"));
       await load();
     } finally {
@@ -208,13 +208,13 @@ YOUTUBE_API_KEY=…`}
       <div className="overflow-hidden rounded-3xl border border-white/10">
         <div className="relative h-36 w-full bg-gradient-to-br from-red-900/60 via-black to-red-800/30">
           {ch.banner && (
-            // eslint-disable-next-line @next/next/no-img-element
+
             <img src={ch.banner} alt="" className="size-full object-cover opacity-80" />
           )}
         </div>
         <div className="flex flex-wrap items-center gap-4 p-5">
           {ch.avatar ? (
-            // eslint-disable-next-line @next/next/no-img-element
+
             <img src={ch.avatar} alt={ch.title} className="-mt-14 size-24 rounded-full border-4 border-[var(--app-bg)] object-cover" />
           ) : (
             <div className="-mt-14 grid size-24 place-items-center rounded-full border-4 border-[var(--app-bg)] bg-white/10">
@@ -274,7 +274,7 @@ YOUTUBE_API_KEY=…`}
               className="group w-28 shrink-0 text-center"
             >
               {s.avatar ? (
-                // eslint-disable-next-line @next/next/no-img-element
+
                 <img src={s.avatar} alt={s.title} className="mx-auto size-20 rounded-full object-cover ring-1 ring-white/10 transition group-hover:ring-red-400/60" />
               ) : (
                 <div className="mx-auto grid size-20 place-items-center rounded-full bg-white/10">
@@ -311,7 +311,7 @@ YOUTUBE_API_KEY=…`}
             >
               <div className="aspect-square w-full overflow-hidden bg-white/5">
                 {p.thumb && (
-                  // eslint-disable-next-line @next/next/no-img-element
+
                   <img src={p.thumb} alt={p.title} className="size-full object-cover transition group-hover:scale-105" />
                 )}
               </div>
@@ -366,7 +366,7 @@ function VideoGrid({ items }: { items: VideoDto[] }) {
         >
           <div className="relative aspect-video w-full overflow-hidden bg-white/5">
             {v.thumb && (
-              // eslint-disable-next-line @next/next/no-img-element
+
               <img src={v.thumb} alt={v.title} className="size-full object-cover transition group-hover:scale-105" />
             )}
             <span className="absolute bottom-1.5 end-1.5 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-white">

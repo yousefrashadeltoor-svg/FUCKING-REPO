@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // ============================================================================
 //  DON MUSE — Providers
@@ -19,6 +19,7 @@ import { NetworkWatcher } from "@/components/layout/NetworkWatcher";
 import { NativeBridgeInit } from "@/components/layout/NativeBridgeInit";
 import { enterPlayerMode } from "@/lib/ui/anim";
 import { useUIStore } from "@/stores/ui-store";
+import { useRouter } from "next/navigation";
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -56,6 +57,7 @@ function ThemeApplier() {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
+  const router = useRouter();
   /* ---------------- playback controller (engine ⇄ store) ---------------- */
   useEffect(() => {
     const teardown = installPlaybackController();
@@ -75,7 +77,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   /* ---------------- hydrate likes from the server once ---------------- */
   useEffect(() => {
-    void fetch("/api/likes")
+    void localFetch("/api/likes")
       .then((r) => (r.ok ? r.json() : []))
       .then((tracks: { id: number }[]) => {
         if (Array.isArray(tracks)) usePlayerStore.getState().hydrateLikes(tracks.map((t) => t.id));
@@ -90,7 +92,7 @@ export function Providers({ children }: { children: ReactNode }) {
       if (!s.isPlaying || !s.currentTrack) return;
       const t = s.currentTrack;
       if (t.id <= 0 || t.source === "radio" || t.source === "quran" || t.source === "local") return;
-      void fetch("/api/history", {
+      void localFetch("/api/history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trackId: t.id, durationListenedSec: 20 }),
@@ -143,7 +145,7 @@ export function Providers({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [router]);
 
   /* ---------------- paint budget hint (progressive enhancement) ---------------- */
   useEffect(() => {
@@ -156,7 +158,10 @@ export function Providers({ children }: { children: ReactNode }) {
     const w = window as Window & {
       __donmuseBack?: () => boolean;
       __donmuseResync?: () => void;
+      __donmuseNavigate?: (path: string) => void;
     };
+    w.__donmuseNavigate = (path) => { if (path.startsWith("/") && !path.startsWith("//")) router.push(path); };
+    if (isNativeHost()) window.DonMuseNative?.uiReady?.(window.__DM_NATIVE_TOKEN__!);
     w.__donmuseBack = () => {
       const ui = useUIStore.getState();
       if (ui.infoSheetOpen) {
@@ -189,8 +194,9 @@ export function Providers({ children }: { children: ReactNode }) {
     return () => {
       delete w.__donmuseBack;
       delete w.__donmuseResync;
+      delete w.__donmuseNavigate;
     };
-  }, []);
+  }, [router]);
 
   return (
     <>

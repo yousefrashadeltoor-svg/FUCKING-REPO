@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  InfoSheet — the track-information layer for the expanded player.
@@ -73,7 +72,7 @@ export function InfoSheet() {
           >
             <div className="mb-4 flex items-start gap-3">
               {track.coverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
+
                 <img src={track.coverUrl} alt="" className="size-20 shrink-0 rounded-2xl object-cover shadow-xl" />
               ) : (
                 <div className="grid size-20 shrink-0 place-items-center rounded-2xl bg-white/10">

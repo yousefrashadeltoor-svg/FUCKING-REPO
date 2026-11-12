@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // Follow / unfollow an artist (optimistic, persisted via /api/artists/[id]/follow).
 import { useState } from "react";
@@ -20,7 +20,7 @@ export function FollowButton({ artistId, initial, size = "md", onChange }: { art
     setFollowing(next);
     onChange?.(next);
     try {
-      const res = await fetch(`/api/artists/${artistId}/follow`, { method: "POST" });
+      const res = await localFetch(`/api/artists/${artistId}/follow`, { method: "POST" });
       const d = (await res.json()) as { following?: boolean };
       if (typeof d.following === "boolean") {
         setFollowing(d.following);

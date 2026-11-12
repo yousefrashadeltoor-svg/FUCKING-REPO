@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // «المتابعات» — every artist / profile the user follows, in one place.
 import { useEffect, useMemo, useState } from "react";
@@ -18,7 +18,7 @@ export default function FollowingPage() {
 
   const load = () => {
     setArtists(null);
-    void fetch("/api/follows")
+    void localFetch("/api/follows")
       .then((r) => (r.ok ? r.json() : []))
       .then((d: ArtistDTO[]) => setArtists(Array.isArray(d) ? d : []))
       .catch(() => setArtists([]));
@@ -81,7 +81,7 @@ export default function FollowingPage() {
           >
             <Link href={`/artists/${a.id}`} className="relative shrink-0">
               {a.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
+
                 <img src={a.imageUrl} alt={a.name} className="size-14 rounded-full object-cover ring-2 ring-white/10" />
               ) : (
                 <div className="grid size-14 place-items-center rounded-full bg-white/10 text-lg font-black">

@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  Official brand marks via simple-icons (the real logo paths published by

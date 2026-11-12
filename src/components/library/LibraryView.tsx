@@ -1,4 +1,3 @@
-"use client";
 
 import { Heart, Clock3, Flame, Hourglass } from "lucide-react";
 import { TrackList } from "@/components/tracks/TrackList";

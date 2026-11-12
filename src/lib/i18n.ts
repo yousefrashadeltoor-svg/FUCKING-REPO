@@ -10,7 +10,7 @@ export const RTL_LANGS: Lang[] = ["ar", "ur"];
 
 const en = {
   // nav / chrome
-  home: "Home", search: "Search", library: "Library", radio: "Radio", ai: "DON AI", settings: "Settings",
+  alarms: "Alarms", home: "Home", search: "Search", library: "Library", radio: "Radio", ai: "DON AI", settings: "Settings",
   yourLibrary: "Your Library", newPlaylist: "New playlist", likedTracks: "Liked Tracks", collapse: "Collapse",
   searchPlaceholder: "Search songs, artists, albums…", seeAllResults: "See all results for",
   tracks: "Tracks", albums: "Albums", artists: "Artists", playlists: "Playlists", noResults: "No results for",
@@ -33,7 +33,7 @@ const en = {
   // download
   dlTitle: "Download", dlFetching: "Fetching real formats…", dlVideo: "Video", dlAudio: "Audio", dlFormats: "formats",
   dlSave: "Save", dlNone: "No downloadable formats right now.", dlCover: "cover art embedded",
-  dlEstimated: "estimated", dlLossless: "Lossless", dlNote: "Extracted with yt-dlp + ffmpeg · tags & cover art embedded",
+  dlEstimated: "estimated", dlLossless: "Lossless", dlNote: "Native extraction + on-device FFmpeg · no application server",
   dlStarted: "Preparing your download…", dlFailed: "Download failed",
   // home
   trendingNow: "Trending Now", becauseYouListened: "Because you listened to", yourTopGenre: "Your top genre",
@@ -56,7 +56,7 @@ const en = {
   egyptStations: "Egyptian stations", worldStations: "World's most-listened", searchStations: "Search stations…",
   listeners: "listeners", listenLive: "Listen live", recorder: "Radio Recorder", recorderSub: "Mark a part of the live stream and save it",
   recording: "Recording buffer", startRec: "Start recording", stopRec: "Stop", markStart: "Mark start", markEnd: "Mark end",
-  selection: "Selection", saveClip: "Save clip (MP3)", clipSaved: "Clip saved", recHint: "Drag the handles on the timeline to choose the part you want — or press “Mark start / Mark end” while listening.",
+  selection: "Selection", saveClip: "Save clip", clipSaved: "Clip saved", recHint: "Drag the handles on the timeline to choose the part you want — or press “Mark start / Mark end” while listening.",
   buffered: "Buffered", nowOnAir: "Now on air", playStationFirst: "Play a station to start the recorder.",
   // ai
   aiTitle: "DON MUSE AI", aiSub: "Describe the music you want — mood, genre, era — and DON MUSE composes a playlist from real full-length tracks.",
@@ -181,6 +181,7 @@ type Dict = Record<DictKey, string>;
 type DictPatch = Partial<Dict>;
 
 const ar: Dict = {
+  alarms: "المنبّه",
   home: "الرئيسية", search: "بحث", library: "المكتبة", radio: "الراديو", ai: "DON AI", settings: "الإعدادات",
   yourLibrary: "مكتبتك", newPlaylist: "قائمة جديدة", likedTracks: "الأغاني المفضلة", collapse: "طي",
   searchPlaceholder: "ابحث عن أغانٍ وفنانين وألبومات…", seeAllResults: "عرض كل نتائج",
@@ -221,7 +222,7 @@ const ar: Dict = {
   egyptStations: "الإذاعات المصرية", worldStations: "الأكثر استماعًا عالميًا", searchStations: "ابحث عن محطة…",
   listeners: "مستمع", listenLive: "استمع مباشرة", recorder: "مسجّل الراديو", recorderSub: "حدّد جزءًا من البث المباشر واحفظه",
   recording: "تسجيل المخزن المؤقت", startRec: "بدء التسجيل", stopRec: "إيقاف", markStart: "علّم البداية", markEnd: "علّم النهاية",
-  selection: "التحديد", saveClip: "حفظ المقطع (MP3)", clipSaved: "تم حفظ المقطع", recHint: "اسحب المقبضين على الخط الزمني لاختيار الجزء المطلوب — أو اضغط «علّم البداية / علّم النهاية» أثناء الاستماع.",
+  selection: "التحديد", saveClip: "حفظ المقطع", clipSaved: "تم حفظ المقطع", recHint: "اسحب المقبضين على الخط الزمني لاختيار الجزء المطلوب — أو اضغط «علّم البداية / علّم النهاية» أثناء الاستماع.",
   buffered: "المخزَّن", nowOnAir: "على الهواء الآن", playStationFirst: "شغّل محطة لبدء المسجّل.",
   aiTitle: "ذكاء DON MUSE", aiSub: "صف الموسيقى التي تريدها — المزاج والنوع والحقبة — وسيؤلّف DON MUSE قائمة من أغانٍ حقيقية كاملة.",
   aiPlaceholder: "مثال: «تكنو مظلم من برلين، إيقاع سريع»…", aiGenerate: "أنشئ القائمة", aiComposing: "جارٍ التأليف…",

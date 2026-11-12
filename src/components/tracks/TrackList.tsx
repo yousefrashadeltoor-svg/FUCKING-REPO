@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // Universal track table used by library / playlist / album / artist / search pages.
 // Row click plays into the queue; heart toggles like; hover actions for queue.
@@ -28,7 +28,6 @@ export function TrackList({ tracks, playAll = true, showAlbum = true, onRemove, 
   const currentId = usePlayerStore((s) => s.currentTrack?.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const likedIds = usePlayerStore((s) => s.likedIds);
-  const togglePlay = usePlayerStore((s) => s.togglePlay);
   const toggleLike = usePlayerStore((s) => s.toggleLike);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
 
@@ -44,7 +43,7 @@ export function TrackList({ tracks, playAll = true, showAlbum = true, onRemove, 
   const onLike = (t: TrackDTO) => {
     const liked = likedIds.includes(t.id);
     toggleLike(t.id);
-    void fetch("/api/likes", {
+    void localFetch("/api/likes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trackId: t.id }),
@@ -105,8 +104,8 @@ export function TrackList({ tracks, playAll = true, showAlbum = true, onRemove, 
             </span>
             <span className="flex min-w-0 items-center gap-2.5">
               {t.coverUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={t.coverUrl} alt="" className="size-9 shrink-0 rounded-lg object-cover" />
+
+                <img src={t.coverUrl} alt="" className="size-14 shrink-0 rounded-xl object-cover" />
               )}
               <span className="min-w-0">
                 <span className={cn("block truncate text-[13.5px] font-semibold", active ? "text-[#1DB954]" : "text-white/90")}>

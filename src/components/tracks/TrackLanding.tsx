@@ -1,4 +1,4 @@
-"use client";
+import { localFetch } from "@/lib/local/client";
 
 // Landing view for a deep-linked song: big cover, play (gesture), share,
 // download, open artist/album/reels. Auto-plays if the engine was already
@@ -38,20 +38,20 @@ export function TrackLanding({ track }: { track: TrackDTO }) {
 
   const onLike = () => {
     toggleLike(track.id);
-    void fetch("/api/likes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId: track.id }) }).catch(() => {});
+    void localFetch("/api/likes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trackId: track.id }) }).catch(() => {});
   };
 
   return (
     <div className="p-4 md:p-6">
       <div className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
         {track.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={track.coverUrl} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-3xl" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b0e] via-[#0b0b0e]/70 to-transparent" />
         <div className="relative flex flex-col gap-6 p-6 md:flex-row md:items-end md:p-10">
           {track.coverUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+
             <img src={track.coverUrl} alt={track.title} className="size-56 shrink-0 rounded-2xl object-cover shadow-2xl md:size-72" />
           ) : <div className="size-56 rounded-2xl bg-white/10 md:size-72" />}
           <div className="min-w-0 flex-1">

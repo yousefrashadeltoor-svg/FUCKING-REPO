@@ -1,4 +1,3 @@
-"use client";
 
 // Applies the persisted layout density as data-density on <html>.
 import { useEffect } from "react";

@@ -1,4 +1,3 @@
-"use client";
 
 // ============================================================================
 //  DON MUSE — device library ("موسيقاي")
@@ -7,9 +6,7 @@
 //                files are played from their own location (content:// URI).
 //                Nothing is uploaded, copied or duplicated; the library's own
 //                playlists / edits live in app-private storage.
-//  Web / PWA   : the File System Access API (or a plain multi-file picker).
-//                Handles are persisted in IndexedDB so the library survives a
-//                reload, and blobs are played through object URLs.
+//  Web / PWA   : the system file picker; blobs stay in the browser media cache.
 // ============================================================================
 
 import {
@@ -18,8 +15,11 @@ import {
   scanDeviceMedia,
   updateDeviceMetadata,
   writeDeviceArtwork,
+  pickNativeMedia,
 } from "@/lib/platform/native";
 import type { TrackDTO } from "@/lib/types";
+import { remember } from "@/lib/local/state";
+import { stableId } from "@/lib/local/model";
 
 export type DeviceItem = DeviceSongDTO;
 
@@ -49,7 +49,7 @@ const EMPTY: LocalLibrary = { songs: [], videos: [], playlists: [], stats: {}, l
 export const DEVICE_LIBRARY_KEY = "donmuse.device.library";
 
 /* -------------------------------------------------------------------------- */
-/*  Persistence (IndexedDB on web, SharedPreferences on Android)              */
+/*  Persistence (local browser storage / Android private files)              */
 /* -------------------------------------------------------------------------- */
 
 import { platformStorage } from "@/lib/storage";
@@ -88,12 +88,11 @@ export interface ScanResult {
 }
 
 /** Native MediaStore scan (Android). Returns empty list on the web. */
-export function scanNative(): ScanResult {
+export async function scanNative(): Promise<ScanResult> {
   if (!isNativeHost()) {
     return { songs: [], videos: [], source: "none", message: "native-unavailable" };
   }
-  const songs = scanDeviceMedia("audio");
-  const videos = scanDeviceMedia("video");
+  const [songs, videos] = await Promise.all([scanDeviceMedia("audio"), scanDeviceMedia("video")]);
   return {
     songs,
     videos,
@@ -104,155 +103,34 @@ export function scanNative(): ScanResult {
 
 /* ----------------------------- web file picker ---------------------------- */
 
-interface WebFileRecord {
-  handle?: FileSystemFileHandle;
-  file: File;
-}
+const FILE_CACHE = "donmuse-media-files-v1";
+const fileKey = (id: string) => `/__donmuse_file__/${encodeURIComponent(id)}`;
+export function supportsFileSystemAccess(): boolean { return isNativeHost() || typeof caches !== "undefined"; }
 
-const WEB_DB = "donmuse-files";
-const WEB_STORE = "handles";
-
-function openWebDb(): Promise<IDBDatabase | null> {
-  if (typeof indexedDB === "undefined") return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const req = indexedDB.open(WEB_DB, 1);
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(WEB_STORE)) req.result.createObjectStore(WEB_STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null);
-  });
-}
-
-async function putWebHandle(id: string, record: WebFileRecord): Promise<void> {
-  const db = await openWebDb();
-  if (!db) return;
-  await new Promise<void>((resolve) => {
-    const tx = db.transaction(WEB_STORE, "readwrite");
-    tx.objectStore(WEB_STORE).put(record, id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-  });
-}
-
-async function getWebHandle(id: string): Promise<WebFileRecord | null> {
-  const db = await openWebDb();
-  if (!db) return null;
-  return new Promise((resolve) => {
-    const tx = db.transaction(WEB_STORE, "readonly");
-    const req = tx.objectStore(WEB_STORE).get(id);
-    req.onsuccess = () => resolve((req.result as WebFileRecord) ?? null);
-    req.onerror = () => resolve(null);
-  });
-}
-
-/** Does the browser support the File System Access API? */
-export function supportsFileSystemAccess(): boolean {
-  return typeof window !== "undefined" && "showOpenFilePicker" in window;
-}
-
-/** Pick local media from this device in the browser. */
+/** SAF on Android; a local media cache in the browser. No IndexedDB server. */
 export async function pickWebFiles(): Promise<DeviceItem[]> {
-  const items: DeviceItem[] = [];
-  let files: File[] = [];
-
-  type PickerWindow = Window & {
-    showOpenFilePicker?: (opts?: unknown) => Promise<FileSystemFileHandle[]>;
-  };
-  const picker = (window as PickerWindow).showOpenFilePicker;
-  if (picker) {
-    try {
-      const handles = await picker({
-        multiple: true,
-        types: [
-          {
-            description: "Audio & video",
-            accept: {
-              "audio/*": [".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wav", ".wma"],
-              "video/*": [".mp4", ".mkv", ".webm", ".avi", ".mov"],
-            },
-          },
-        ],
-      });
-      for (const handle of handles) {
-        const file = await handle.getFile();
-        files.push(file);
-        const id = `web:${file.name}:${file.size}:${file.lastModified}`;
-        await putWebHandle(id, { handle, file });
-      }
-    } catch {
-      return [];
-    }
-  } else {
-    files = await new Promise<File[]>((resolve) => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.multiple = true;
-      input.accept = "audio/*,video/*";
-      input.onchange = () => resolve(Array.from(input.files ?? []));
-      input.click();
-    });
-    for (const file of files) {
-      const id = `web:${file.name}:${file.size}:${file.lastModified}`;
-      await putWebHandle(id, { file });
-    }
-  }
-
-  for (const file of files) {
-    const id = `web:${file.name}:${file.size}:${file.lastModified}`;
-    const isVideo = file.type.startsWith("video/");
-    const parsed = await readTags(file).catch(() => null);
-    items.push({
-      id,
-      uri: `webfile:${id}`,
-      title: parsed?.title || file.name.replace(/\.[^.]+$/, ""),
-      artist: parsed?.artist || "Unknown artist",
-      artistId: null,
-      album: parsed?.album || "Unknown album",
-      albumId: null,
-      albumArtUri: parsed?.cover ?? null,
-      durationMs: 0,
-      mimeType: file.type || "audio/mpeg",
-      sizeBytes: file.size,
-      dateAdded: file.lastModified,
-      trackNumber: 0,
-      year: parsed?.year ?? 0,
-      isVideo,
-    });
+  if (isNativeHost()) return pickNativeMedia();
+  const files = await new Promise<File[]>(resolve => {
+    const input=document.createElement("input");input.type="file";input.multiple=true;input.accept="audio/*,video/*";
+    input.onchange=()=>resolve(Array.from(input.files??[]));input.oncancel=()=>resolve([]);input.click();
+  });
+  const cache=await caches.open(FILE_CACHE);
+  const items:DeviceItem[]=[];
+  for(const file of files){
+    const id=`web:${file.name}:${file.size}:${file.lastModified}`;
+    await cache.put(fileKey(id),new Response(file,{headers:{"Content-Type":file.type||"audio/mpeg"}}));
+    const tags=await readTags(file).catch(()=>null);
+    items.push({id,uri:`webfile:${id}`,title:tags?.title||file.name.replace(/\.[^.]+$/,""),artist:tags?.artist||"فنان غير معروف",artistId:null,album:tags?.album||"ملفاتي",albumId:null,albumArtUri:tags?.cover??null,durationMs:0,mimeType:file.type||"audio/mpeg",sizeBytes:file.size,dateAdded:file.lastModified,trackNumber:0,year:tags?.year??0,isVideo:file.type.startsWith("video/")});
   }
   return items;
 }
-
-/** Resolve a web file id back to a playable object URL. */
-const urlCache = new Map<string, string>();
-
-export async function resolveWebFileUrl(id: string): Promise<string | null> {
-  if (!id.startsWith("web:")) return null;
-  const cached = urlCache.get(id);
-  if (cached) return cached;
-  const record = await getWebHandle(id);
-  if (!record) return null;
-  let file = record.file;
-  if (record.handle) {
-    try {
-      const perm = await (record.handle as FileSystemFileHandle & {
-        queryPermission?: (o: { mode: string }) => Promise<string>;
-        requestPermission?: (o: { mode: string }) => Promise<string>;
-      }).queryPermission?.({ mode: "read" });
-      if (perm !== "granted") {
-        await (record.handle as FileSystemFileHandle & {
-          requestPermission?: (o: { mode: string }) => Promise<string>;
-        }).requestPermission?.({ mode: "read" });
-      }
-      file = await record.handle.getFile();
-    } catch {
-      /* fall back to the stored snapshot */
-    }
-  }
-  const url = URL.createObjectURL(file);
-  urlCache.set(id, url);
-  return url;
+const urlCache=new Map<string,string>();
+export async function resolveWebFileUrl(id:string):Promise<string|null>{
+  if(urlCache.has(id))return urlCache.get(id)!;
+  const cache=await caches.open(FILE_CACHE);const response=await cache.match(fileKey(id));if(!response)return null;
+  const url=URL.createObjectURL(await response.blob());urlCache.set(id,url);return url;
 }
+export async function removeWebFile(id:string):Promise<void>{await (await caches.open(FILE_CACHE)).delete(fileKey(id));const u=urlCache.get(id);if(u)URL.revokeObjectURL(u);urlCache.delete(id);}
 
 /* -------------------------------------------------------------------------- */
 /*  Minimal ID3v2 + MP4 tag reader (title / artist / album / year / cover)     */
@@ -266,6 +144,7 @@ export interface ParsedTags {
   cover?: string;
 }
 
+/* eslint-disable no-control-regex -- ID3 text is NUL padded. */
 function decodeText(bytes: Uint8Array, encoding: number): string {
   if (encoding === 1 || encoding === 2) {
     const decoder = new TextDecoder(encoding === 1 ? "utf-16" : "utf-16be");
@@ -274,6 +153,8 @@ function decodeText(bytes: Uint8Array, encoding: number): string {
   if (encoding === 3) return new TextDecoder("utf-8").decode(bytes).replace(/\u0000+$/, "").trim();
   return new TextDecoder("latin1").decode(bytes).replace(/\u0000+$/, "").trim();
 }
+
+/* eslint-enable no-control-regex */
 
 export async function readTags(file: Blob): Promise<ParsedTags> {
   const head = new Uint8Array(await file.slice(0, 512 * 1024).arrayBuffer());
@@ -329,12 +210,12 @@ export async function readTags(file: Blob): Promise<ParsedTags> {
 /* -------------------------------------------------------------------------- */
 
 export function deviceItemToTrack(item: DeviceItem, streamUrl: string): TrackDTO {
-  return {
+  const track: TrackDTO = {
     id: hashId(item.id),
     title: item.title,
-    artistId: 0,
+    artistId: stableId(`artist:${item.artist}`),
     artistName: item.artist || "Unknown artist",
-    albumId: null,
+    albumId: stableId(`album:${item.artist}:${item.album}`),
     albumTitle: item.album || null,
     coverUrl: item.albumArtUri,
     durationSec: Math.round((item.durationMs || 0) / 1000),
@@ -355,7 +236,7 @@ export function deviceItemToTrack(item: DeviceItem, streamUrl: string): TrackDTO
     language: "",
     year: item.year || 0,
     isrc: null,
-    codec: (item.mimeType.split("/")[1] ?? "mp3").toUpperCase(),
+    codec: item.mimeType.split("/")[1] ?? "mp3",
     bitrate: 0,
     lossless: /flac|wav|alac/i.test(item.mimeType),
     playCount: 0,
@@ -365,7 +246,9 @@ export function deviceItemToTrack(item: DeviceItem, streamUrl: string): TrackDTO
     localUri: item.uri,
     mimeType: item.mimeType,
     sizeBytes: item.sizeBytes,
-  } as TrackDTO;
+  };
+  remember([track]);
+  return track;
 }
 
 /** Negative-safe stable numeric id for device items (never clashes with DB ids). */
@@ -389,7 +272,7 @@ export async function applyMetadataEdit(
   patch: { title?: string; artist?: string; album?: string; year?: number },
 ): Promise<EditResult> {
   if (isNativeHost()) {
-    const res = updateDeviceMetadata(item.uri, patch);
+    const res = await updateDeviceMetadata(item.uri, patch);
     return { ok: res.ok, message: res.message || (res.ok ? "saved" : "failed") };
   }
   return {
@@ -400,7 +283,7 @@ export async function applyMetadataEdit(
 
 export async function applyArtworkEdit(item: DeviceItem, base64: string): Promise<EditResult> {
   if (isNativeHost()) {
-    const res = writeDeviceArtwork(item.uri, base64);
+    const res = await writeDeviceArtwork(item.uri, base64);
     return { ok: res.ok, message: res.message || (res.ok ? "saved" : "failed") };
   }
   return { ok: false, message: "تغيير الغلاف متاح في تطبيق أندرويد." };

@@ -1,4 +1,3 @@
-"use client";
 
 // Right contextual panel with tabs: Lyrics / Queue / Visualizer / Info.
 import Link from "next/link";
@@ -63,7 +62,7 @@ function InfoTab() {
     <div className="aura-scroll h-full overflow-y-auto p-5">
       <div className="mb-5 flex items-center gap-4">
         {track.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
+
           <img src={track.coverUrl} alt="" className="size-20 rounded-2xl object-cover shadow-xl" />
         ) : (
           <div className="grid size-20 place-items-center rounded-2xl bg-white/10">
