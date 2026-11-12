@@ -39,7 +39,7 @@ class PlaybackService : MediaSessionService() {
     private val resolved=ConcurrentHashMap<String,String>()
     override fun onCreate(){
         super.onCreate()
-        val httpFactory=OkHttpDataSource.Factory(Http.client).setUserAgent(Http.UA).setAllowCrossProtocolRedirects(true)
+        val httpFactory=OkHttpDataSource.Factory(Http.client).setUserAgent(Http.UA)
         val upstream=DefaultDataSource.Factory(this,httpFactory)
         val resolver=ResolvingDataSource.Factory(upstream){spec->
             val raw=spec.uri.toString()
