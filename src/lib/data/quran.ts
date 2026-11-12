@@ -7,9 +7,8 @@
 //  114 surahs even if a single CDN is missing a track.
 //
 //  Sources (all direct MP3 over https, Range-capable):
-//   • mp3quran.net      — the largest Quran audio library (server5..server13)
+//   • mp3quran.net      — the largest Quran audio library (server5..server14)
 //   • everyayah.com     — per-ayah and full-surah, very reliable
-//   • quranicaudio.com  — high-quality bitrates (64/128/192 kbps)
 //   • islamic.network   — mirrors for older Egyptian recordings
 //
 //  Nothing is invented: a source is listed only if it really hosts that
@@ -30,7 +29,7 @@ export const SURAHS: Surah[] = [{"n":1,"ar":"ٱلْفَاتِحَةِ","en":"Al-
 /*  Sources                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export type SourceId = "mp3quran" | "everyayah" | "quranicaudio" | "islamicnetwork";
+export type SourceId = "mp3quran" | "everyayah" | "islamicnetwork";
 
 export interface QuranSource {
   id: SourceId;
@@ -53,15 +52,8 @@ export const QURAN_SOURCES: Record<SourceId, QuranSource> = {
     id: "everyayah",
     label: "EveryAyah",
     labelAr: "everyayah.com",
-    bitrates: [128, 64],
-    note: "مصدر موثوق لكل السور · أكثر من 100 قارئ",
-  },
-  quranicaudio: {
-    id: "quranicaudio",
-    label: "QuranicAudio",
-    labelAr: "quranicaudio.com",
-    bitrates: [192, 128, 64],
-    note: "جودات متعددة تصل إلى 192 kbps",
+    bitrates: [192, 128, 64, 40],
+    note: "مصدر موثوق لكل السور · عشرات القرّاء",
   },
   islamicnetwork: {
     id: "islamicnetwork",
@@ -80,12 +72,10 @@ export interface ReciterSource {
   source: SourceId;
   /** mp3quran folder code (e.g. "basit") */
   folder?: string;
-  /** mp3quran server number 5..13 */
+  /** mp3quran server number (e.g. 7, 12) */
   server?: number;
   /** everyayah directory (e.g. "Abdul_Basit_Murattal_192kbps") */
   dir?: string;
-  /** quranicaudio relative path: "<album>/<bitrate>/<surah>.mp3" */
-  qaAlbum?: string;
   /** islamic.network path template (with {s}) */
   inPath?: string;
   bitrate: number;
@@ -136,90 +126,60 @@ const mp3q = (folder: string, server = 5, bitrate = 128): ReciterSource => ({
 export const RECITERS: Reciter[] = [
   /* ------------------------- Egypt (القرّاء المصريون) ------------------------ */
   R("basit", "عبد الباسط عبد الصمد", "Abdul-Basit Abdul-Samad", "EG", "مصر", "مرتّل",
-    [mp3q("basit"), { source: "everyayah", dir: "Abdul_Basit_Murattal_192kbps", bitrate: 192 }, { source: "quranicaudio", qaAlbum: "abdulbasitmurattal", bitrate: 192 }]),
+    [mp3q("basit", 7), { source: "everyayah", dir: "Abdul_Basit_Murattal_192kbps", bitrate: 192 }]),
   R("basit-mujawwad", "عبد الباسط عبد الصمد (مجوّد)", "Abdul-Basit — Mujawwad", "EG", "مصر", "مجوّد",
-    [{ source: "everyayah", dir: "Abdul_Basit_Mujawwad_128kbps", bitrate: 128 }, { source: "quranicaudio", qaAlbum: "abdulbasitmujawwad", bitrate: 128 }]),
+    [{ source: "everyayah", dir: "Abdul_Basit_Mujawwad_128kbps", bitrate: 128 }]),
   R("husary", "محمود خليل الحصري", "Mahmoud Khalil Al-Husary", "EG", "مصر", "مرتّل",
-    [mp3q("husary"), { source: "everyayah", dir: "Husary_128kbps", bitrate: 128 }, { source: "quranicaudio", qaAlbum: "husary", bitrate: 128 }]),
+    [mp3q("husr", 13), { source: "everyayah", dir: "Husary_128kbps", bitrate: 128 }]),
   R("husary-mujawwad", "الحصري (مجوّد)", "Al-Husary — Mujawwad", "EG", "مصر", "مجوّد",
     [{ source: "everyayah", dir: "Husary_Mujawwad_64kbps", bitrate: 64 }]),
   R("minsh", "محمد صديق المنشاوي", "Mohamed El-Minshawi", "EG", "مصر", "مرتّل",
-    [mp3q("minsh", 6), { source: "everyayah", dir: "Minshawy_Murattal_128kbps", bitrate: 128 }, { source: "quranicaudio", qaAlbum: "minshawy", bitrate: 128 }]),
+    [mp3q("minsh", 10), { source: "everyayah", dir: "Minshawy_Murattal_128kbps", bitrate: 128 }]),
   R("minsh-mujawwad", "المنشاوي (مجوّد)", "El-Minshawi — Mujawwad", "EG", "مصر", "مجوّد",
-    [{ source: "everyayah", dir: "Minshawy_Mujawwad_192kbps", bitrate: 192 }, { source: "quranicaudio", qaAlbum: "minshawymujawwad", bitrate: 192 }]),
-  R("rifai", "هاني الرفاعي", "Hani Ar-Rifai", "EG", "مصر", "مرتّل",
-    [mp3q("rifai"), { source: "everyayah", dir: "Hani_Rifai_192kbps", bitrate: 192 }]),
-  R("muaiqly-eg", "محمد رفعت", "Sheikh Mohamed Refaat", "EG", "مصر", "مرتّل",
-    [{ source: "islamicnetwork", inPath: "refaat/{s}.mp3", bitrate: 128 }, { source: "everyayah", dir: "Mohammad_Refaat_128kbps", bitrate: 128 }]),
-  R("shahat", "محمد محمود الشحات", "Mohamed El-Shahat", "EG", "مصر", "مرتّل", [mp3q("shahat", 6)]),
-  R("tablawi", "محمد محمود الطبلاوي", "Mohamed Al-Tablawi", "EG", "مصر", "مرتّل", [mp3q("tablawi", 6)]),
-  R("gharbi", "عبد الباسط عبد الصمد (حفلات)", "Abdul-Basit — Live", "EG", "مصر", "حفلات",
-    [mp3q("basit", 7)]),
+    [{ source: "everyayah", dir: "Minshawy_Mujawwad_192kbps", bitrate: 192 }]),
+  R("muaiqly-eg", "محمد رفعت", "Sheikh Mohamed Refaat", "EG", "مصر", "مرتّل", [mp3q("refat", 14)]),
+  R("shahat", "محمد أنور الشحات", "Mohamed Anwar El-Shahat", "EG", "مصر", "مرتّل",
+    [{ source: "islamicnetwork", inPath: "ar.muhammadanwarshahat/{s}.mp3", bitrate: 128 }]),
+  R("tablawi", "محمد محمود الطبلاوي", "Mohamed Al-Tablawi", "EG", "مصر", "مرتّل",
+    [mp3q("tblawi", 12), { source: "everyayah", dir: "Mohammad_al_Tablaway_128kbps", bitrate: 128 }, { source: "islamicnetwork", inPath: "ar.mohamedtablawi/{s}.mp3", bitrate: 128 }]),
   R("hossary2", "محمود خليل الحصري (تعليمي)", "Al-Husary — Teaching", "EG", "مصر", "تعليمي",
-    [{ source: "everyayah", dir: "Husary_128kbps_teaching", bitrate: 128 }]),
+    [{ source: "everyayah", dir: "Husary_Muallim_128kbps", bitrate: 128 }]),
 
   /* ------------------------- Saudi Arabia ------------------------ */
   R("sudais", "عبد الرحمن السديس", "Abdur-Rahman As-Sudais", "SA", "السعودية", "مرتّل",
-    [mp3q("sds"), { source: "everyayah", dir: "Abdurrahmaan_As-Sudais_192kbps", bitrate: 192 }, { source: "quranicaudio", qaAlbum: "sudais", bitrate: 192 }]),
+    [mp3q("sds", 11), { source: "everyayah", dir: "Abdurrahmaan_As-Sudais_192kbps", bitrate: 192 }]),
   R("shur", "سعود الشريم", "Saud Ash-Shuraim", "SA", "السعودية", "مرتّل",
-    [mp3q("shur"), { source: "everyayah", dir: "Saood_ash-Shuraym_128kbps", bitrate: 128 }, { source: "quranicaudio", qaAlbum: "shuraim", bitrate: 128 }]),
+    [mp3q("shur", 7), { source: "everyayah", dir: "Saood_ash-Shuraym_128kbps", bitrate: 128 }]),
   R("shatri", "أبو بكر الشاطري", "Abu-Bakr Al-Shatri", "SA", "السعودية", "مرتّل",
-    [mp3q("shatri"), { source: "everyayah", dir: "Abu_Bakr_Ash-Shaatree_128kbps", bitrate: 128 }]),
+    [mp3q("shatri", 11), { source: "everyayah", dir: "Abu_Bakr_Ash-Shaatree_128kbps", bitrate: 128 }]),
   R("ayyub", "محمد أيوب", "Muhammad Ayyub", "SA", "السعودية", "مرتّل",
-    [mp3q("ayyub"), { source: "everyayah", dir: "Muhammad_Ayyoub_128kbps", bitrate: 128 }]),
+    [mp3q("ayyub", 8), { source: "everyayah", dir: "Muhammad_Ayyoub_128kbps", bitrate: 128 }]),
   R("ghamdi", "سعد الغامدي", "Saad Al-Ghamdi", "SA", "السعودية", "مرتّل",
-    [mp3q("ghamdi"), { source: "everyayah", dir: "Ghamadi_40kbps", bitrate: 40 }, { source: "quranicaudio", qaAlbum: "ghamdi", bitrate: 128 }]),
+    [mp3q("s_gmd", 7), { source: "everyayah", dir: "Ghamadi_40kbps", bitrate: 40 }]),
   R("yasser", "ياسر الدوسري", "Yasser Ad-Dosari", "SA", "السعودية", "مرتّل",
-    [mp3q("yasser"), { source: "everyayah", dir: "Yasser_Ad-Dussary_128kbps", bitrate: 128 }]),
-  R("dossari", "ياسر الدوسري (حفلات)", "Yasser Ad-Dosari — Live", "SA", "السعودية", "حفلات", [mp3q("yasser", 7)]),
-  R("juhani", "عبد الله الجهني", "Abdullah Al-Juhany", "SA", "السعودية", "مرتّل", [mp3q("juhani", 6)]),
+    [mp3q("yasser", 11), { source: "everyayah", dir: "Yasser_Ad-Dussary_128kbps", bitrate: 128 }]),
+  R("juhani", "عبد الله الجهني", "Abdullah Al-Juhany", "SA", "السعودية", "مرتّل", [mp3q("jhn", 13)]),
   R("maher", "ماهر المعيقلي", "Maher Al-Muaiqly", "SA", "السعودية", "مرتّل",
-    [mp3q("maher", 6), { source: "everyayah", dir: "MaherAlMuaiqly128kbps", bitrate: 128 }]),
-  R("sudais2", "عبد الرحمن السديس (حفلات)", "As-Sudais — Live", "SA", "السعودية", "حفلات", [mp3q("sds", 6)]),
-  R("qasim", "عبد المحسن القاسم", "Abdulmohsin Al-Qasim", "SA", "السعودية", "مرتّل", [mp3q("qasim", 6)]),
-  R("balushi", "عبد الله البهلوي", "Abdullah Al-Balushi", "SA", "السعودية", "مرتّل", [mp3q("balushi", 6)]),
-  R("baleela", "بندر بليلة", "Bandar Baleela", "SA", "السعودية", "مرتّل", [mp3q("baleela", 6)]),
-  R("shathri2", "أحمد الشثري", "Ahmad Ash-Shathri", "SA", "السعودية", "مرتّل", [mp3q("shathri", 6)]),
-  R("saleh", "صلاح البدير", "Salah Al-Budair", "SA", "السعودية", "مرتّل", [mp3q("saleh", 6)]),
+    [mp3q("maher", 12), { source: "everyayah", dir: "MaherAlMuaiqly128kbps", bitrate: 128 }]),
+  R("qasim", "عبد المحسن القاسم", "Abdulmohsin Al-Qasim", "SA", "السعودية", "مرتّل", [mp3q("qasm", 8)]),
+  R("baleela", "بندر بليلة", "Bandar Baleela", "SA", "السعودية", "مرتّل", [mp3q("balilah", 6)]),
+  R("saleh", "صلاح البدير", "Salah Al-Budair", "SA", "السعودية", "مرتّل", [mp3q("s_bud", 6)]),
+  R("rifai", "هاني الرفاعي", "Hani Ar-Rifai", "SA", "السعودية", "مرتّل",
+    [mp3q("hani", 8), { source: "everyayah", dir: "Hani_Rifai_192kbps", bitrate: 192 }]),
+  R("thubti", "عبد الباري الثبيتي", "Abdelbari Al-Thubaiti", "SA", "السعودية", "مرتّل",
+    [mp3q("thubti", 6), { source: "islamicnetwork", inPath: "ar.abdulbariaththubaity/{s}.mp3", bitrate: 128 }]),
 
   /* ------------------------- Kuwait / Gulf ------------------------ */
   R("afs", "مشاري العفاسي", "Mishary Alafasy", "KW", "الكويت", "مرتّل",
-    [mp3q("afs"), { source: "everyayah", dir: "Alafasy_128kbps", bitrate: 128 }, { source: "quranicaudio", qaAlbum: "alafasy", bitrate: 128 }]),
-  R("afasy2", "مشاري العفاسي (128)", "Alafasy — 128kbps", "KW", "الكويت", "مرتّل",
-    [{ source: "everyayah", dir: "Alafasy_128kbps", bitrate: 128 }]),
-  R("jaber", "أحمد الجابري", "Ahmad Al-Jabri", "KW", "الكويت", "مرتّل", [mp3q("jaber", 6)]),
+    [mp3q("afs", 8), { source: "everyayah", dir: "Alafasy_128kbps", bitrate: 128 }]),
   R("ajmi", "أحمد العجمي", "Ahmad Al-Ajmi", "SA", "السعودية", "مرتّل",
-    [mp3q("ajm"), { source: "everyayah", dir: "ahmed_ibn_ali_al_ajamy_128kbps", bitrate: 128 }]),
+    [mp3q("ajm", 10), { source: "everyayah", dir: "ahmed_ibn_ali_al_ajamy_128kbps", bitrate: 128 }]),
 
   /* ------------------------- Arab world ------------------------ */
   R("abdullah", "عبد الله بصفر", "Abdullah Basfar", "SA", "السعودية", "مرتّل",
     [{ source: "everyayah", dir: "Abdullah_Basfar_192kbps", bitrate: 192 }]),
   R("ali", "علي الحذيفي", "Ali Al-Hudhaify", "SA", "السعودية", "مرتّل",
-    [{ source: "everyayah", dir: "Ali_Hudhaify_128kbps", bitrate: 128 }]),
-  R("riyadh", "ريّان الحسيني", "Rayan Al-Hussaini", "SA", "السعودية", "مرتّل", [mp3q("riyadh", 6)]),
-  R("qarni", "عبد الرحمن القرني", "Abdulrahman Al-Qarni", "SA", "السعودية", "مرتّل", [mp3q("qarni", 6)]),
-  R("salah", "أحمد صالح", "Ahmad Saleh", "SA", "السعودية", "مرتّل", [mp3q("salah", 6)]),
-  R("mohsin", "عبد المحسن الغامدي", "Abdulmohsin Al-Ghamdi", "SA", "السعودية", "مرتّل", [mp3q("mohsin", 6)]),
-  R("zaki", "محمد الزاكي", "Mohamed Al-Zaki", "SA", "السعودية", "مرتّل", [mp3q("zaki", 6)]),
-  R("ansari", "سعد بن عبد الله الأنصاري", "Saad Al-Ansari", "SA", "السعودية", "مرتّل", [mp3q("ansari", 6)]),
-
-  /* ------------------------- Levant ------------------------ */
-  R("rashid", "محمود رشيد", "Mahmoud Rashid", "JO", "الأردن", "مرتّل", [mp3q("rashid", 6)]),
-  R("hamdani", "عبد الرزاق الحمداني", "Abdulrazzaq Al-Hamdani", "IQ", "العراق", "مرتّل", [mp3q("hamdani", 6)]),
-  R("yaqoobi", "محمد الياقوت", "Mohamed Al-Yaqoubi", "SY", "سوريا", "مرتّل", [mp3q("yaqoobi", 6)]),
-  R("arnaut", "عمر العرعور", "Omar Al-Arnaout", "SY", "سوريا", "مرتّل", [mp3q("arnaut", 6)]),
-
-  /* ------------------------- North Africa ------------------------ */
-  R("thubti", "محمد الثبيتي", "Mohammad Al-Thubaiti", "MA", "المغرب", "مرتّل",
-    [{ source: "everyayah", dir: "Mohammad_al_Tablaway_128kbps", bitrate: 128 }]),
-  R("libi", "الحسين الليبي", "Al-Hussein Al-Libi", "LY", "ليبيا", "مرتّل", [mp3q("libi", 6)]),
-  R("tuware", "عبد الله الطوار", "Abdullah Al-Tuwar", "DZ", "الجزائر", "مرتّل", [mp3q("tuware", 6)]),
-  R("tunis", "محمود التونسي", "Mahmoud Al-Tunisi", "TN", "تونس", "مرتّل", [mp3q("tunis", 6)]),
-
-  /* ------------------------- Rest of the world ------------------- */
-  R("afghan", "محمد نور", "Mohamed Noor", "PK", "باكستان", "مرتّل", [mp3q("afghan", 6)]),
-  R("hindi", "نعيم الهنيدي", "Naeem Al-Hunaidi", "IN", "الهند", "مرتّل", [mp3q("hindi", 6)]),
-  R("turki", "علي التركي", "Ali Al-Turki", "TR", "تركيا", "مرتّل", [mp3q("turki", 6)]),
+    [{ source: "everyayah", dir: "Hudhaify_128kbps", bitrate: 128 }]),
 ];
 
 export function getSurah(n: number): Surah | null {
@@ -238,8 +198,6 @@ export function sourceUrl(surah: number, reciter: Reciter, src: ReciterSource): 
       return `https://server${src.server ?? 5}.mp3quran.net/${src.folder}/${pad}.mp3`;
     case "everyayah":
       return `https://everyayah.com/data/${src.dir}/${pad}.mp3`;
-    case "quranicaudio":
-      return `https://download.quranicaudio.com/quran/${src.qaAlbum}/${src.bitrate}/${pad}.mp3`;
     case "islamicnetwork":
       return `https://cdn.islamic.network/quran/audio-surah/${src.bitrate}/${(src.inPath ?? "").replace("{s}", String(surah))}`;
     default:

@@ -46,12 +46,13 @@ object NativePlayer {
         main.removeCallbacks(ticker);main.post(ticker)
     }}
     fun detach(){main.post{main.removeCallbacks(ticker);cancelSleep();player=null;snapshot=JSONObject(snapshot.toString()).put("playing",false).put("buffering",false);NativeEvents.emit("playback",snapshot.toString())}}
-    private fun run(fn:(ExoPlayer)->Unit){main.post{val p=player;if(p!=null)fn(p)else context?.let{start(it)}}}
+    private fun onPlayer(fn:(ExoPlayer)->Unit){main.post{val p=player;if(p!=null)fn(p)else context?.let{start(it)}}}
     fun start(ctx:Context){context=ctx.applicationContext;ContextCompat.startForegroundService(ctx,Intent(ctx,PlaybackService::class.java).setAction(PlaybackService.ACTION_PREPARE))}
     fun setQueue(ctx:Context,json:String){context=ctx.applicationContext;main.post{val p=player;if(p==null){pending=json;start(ctx)}else applyQueue(json,false)}}
-    fun updateQueue(json:String){main.post{val p=player;if(p==null){pending=json;start(ctx)}else applyQueue(json,true)}}
+    fun updateQueue(ctx:Context,json:String){context=ctx.applicationContext;main.post{val p=player;if(p==null){pending=json;start(ctx)}else applyQueue(json,true)}}
     private fun applyQueue(json:String,preservePosition:Boolean){
-        val p=player ?: run{pending=json;return}
+        val p=player
+        if(p==null){pending=json;return}
         try{
             val root=JSONObject(json);val items=root.optJSONArray("items") ?: JSONArray();require(items.length()>0){"قائمة التشغيل فارغة"}
             val media=ArrayList<MediaItem>();tracks.clear()
@@ -59,7 +60,7 @@ object NativePlayer {
             for(i in 0 until items.length()){
                 val o=items.getJSONObject(i);val id=o.getString("id");o.optJSONObject("track")?.let{tracks[id]=it}
                 val art=o.optString("artUri").takeIf{it.isNotBlank()&&it!="null"}
-                val meta=MediaMetadata.Builder().setTitle(o.optString("title","DON MUSE")).setArtist(o.optString("artist")).setAlbumTitle(o.optString("album")).setArtworkUri(art?.let(Uri::parse)).setMediaId(id).build()
+                val meta=MediaMetadata.Builder().setTitle(o.optString("title","DON MUSE")).setArtist(o.optString("artist")).setAlbumTitle(o.optString("album")).setArtworkUri(art?.let(Uri::parse)).build()
                 media+=MediaItem.Builder().setMediaId(id).setUri(o.getString("uri")).setMimeType(o.optString("mime").takeIf{it.isNotBlank()&&it!="null"}).setMediaMetadata(meta).build()
             }
             val oldId=p.currentMediaItem?.mediaId;val oldPosition=p.currentPosition
@@ -71,21 +72,31 @@ object NativePlayer {
             context?.let{AppStorage(it).set("donmuse.lastQueue",root.toString())};persist();emit()
         }catch(e:Exception){error=e.message ?: "قائمة غير صالحة";emit()}
     }
-    fun play(){run{it.play()}}
-    fun pause(){run{it.pause()}}
-    fun toggle(){run{if(it.isPlaying||it.playWhenReady)it.pause()else it.play()}}
-    fun next(){run{if(it.hasNextMediaItem())it.seekToNextMediaItem()else if(it.repeatMode==Player.REPEAT_MODE_ALL&&it.mediaItemCount>0)it.seekTo(0,0)}}
-    fun previous(){run{if(it.currentPosition>3000||!it.hasPreviousMediaItem())it.seekTo(0)else it.seekToPreviousMediaItem()}}
-    fun seek(ms:Long){run{it.seekTo(ms.coerceAtLeast(0))}}
+    fun play(){onPlayer{it.play()}}
+    fun pause(){onPlayer{it.pause()}}
+    fun toggle(){onPlayer{if(it.isPlaying||it.playWhenReady)it.pause()else it.play()}}
+    fun next(){onPlayer{if(it.hasNextMediaItem())it.seekToNextMediaItem()else if(it.repeatMode==Player.REPEAT_MODE_ALL&&it.mediaItemCount>0)it.seekTo(0,0)}}
+    fun previous(){onPlayer{if(it.currentPosition>3000||!it.hasPreviousMediaItem())it.seekTo(0)else it.seekToPreviousMediaItem()}}
+    fun seek(ms:Long){onPlayer{it.seekTo(ms.coerceAtLeast(0))}}
     fun stop(){main.post{cancelSleep();player?.run{stop();clearMediaItems()};error=null;emit();persist()}}
-    fun setVolume(v:Float){volume=v.coerceIn(0f,1f);run{it.volume=volume}}
-    fun setRate(v:Float){rate=v.coerceIn(.25f,3f);run{it.setPlaybackSpeed(rate)}}
-    fun setRepeat(mode:String){repeat=when(mode){"one"->Player.REPEAT_MODE_ONE;"all"->Player.REPEAT_MODE_ALL;else->Player.REPEAT_MODE_OFF};run{it.repeatMode=repeat}}
-    fun setShuffle(on:Boolean){shuffle=on;run{it.shuffleModeEnabled=on}}
+    fun setVolume(v:Float){volume=v.coerceIn(0f,1f);onPlayer{it.volume=volume}}
+    fun setRate(v:Float){rate=v.coerceIn(.25f,3f);onPlayer{it.setPlaybackSpeed(rate)}}
+    fun setRepeat(mode:String){repeat=when(mode){"one"->Player.REPEAT_MODE_ONE;"all"->Player.REPEAT_MODE_ALL;else->Player.REPEAT_MODE_OFF};onPlayer{it.repeatMode=repeat}}
+    fun setShuffle(on:Boolean){shuffle=on;onPlayer{it.shuffleModeEnabled=on}}
     fun setEq(json:String){val a=JSONArray(json);equalizer.setBands(DoubleArray(10){a.optDouble(it,0.0)})}
     private fun cancelSleep(){sleepRunnable?.let(main::removeCallbacks);fadeRunnables.forEach(main::removeCallbacks);fadeRunnables.clear();sleepRunnable=null;player?.volume=volume}
     fun setSleepTimer(ms:Long){main.post{cancelSleep();if(ms<=0)return@post;val r=Runnable{fadeOut(8)};sleepRunnable=r;main.postDelayed(r,ms.coerceAtLeast(1))}}
-    fun fadeOut(seconds:Int){main.post{cancelSleep();val p=player ?: return@post;val start=p.volume;for(i in 1..20){val r=Runnable{player?.volume=start*(1-i/20f)};fadeRunnables.add(r);main.postDelayed(r,i*seconds*50L)}val r=Runnable{player?.pause();player?.volume=volume;emit()};fadeRunnables.add(r);main.postDelayed(r,seconds*1000L+80)}}
+    fun fadeOut(seconds:Int){main.post{
+        cancelSleep()
+        val p=player ?: return@post
+        val start=p.volume
+        for(i in 1..20){
+            val step=Runnable{player?.volume=start*(1-i/20f)}
+            fadeRunnables.add(step);main.postDelayed(step,i*seconds*50L)
+        }
+        val end=Runnable{player?.pause();player?.volume=volume;emit()}
+        fadeRunnables.add(end);main.postDelayed(end,seconds*1000L+80)
+    }}
     // These accessors read a main-thread snapshot, never ExoPlayer from the JS thread.
     fun isPlaying()=snapshot.optBoolean("playing")
     fun positionMs()=snapshot.optLong("positionMs")

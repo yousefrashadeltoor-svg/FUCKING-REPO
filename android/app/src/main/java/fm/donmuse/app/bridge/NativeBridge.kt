@@ -124,7 +124,7 @@ class NativeBridge(
         "transcodeClip"->LocalConversions.clip(activity,a.getString("base64"),a.optString("mime","audio/mpeg"),a.getDouble("startSec"),a.getDouble("endSec")).toString()
         "openLocalClip"->LocalConversions.openClip(activity,a.getString("id"),a.getString("base64"),a.optString("mime","audio/mpeg")).toString()
         "deleteLocalClip"->{LocalConversions.deleteClip(activity,a.getString("id")); "true"}
-        "updateQueue"->{NativePlayer.updateQueue(a.getJSONObject("queue").toString()); "true"}
+        "updateQueue"->{NativePlayer.updateQueue(activity,a.getJSONObject("queue").toString()); "true"}
         "scheduleAlarm"->AlarmScheduler.schedule(activity,a.getJSONObject("alarm")).toString()
         "cancelAlarm"->{AlarmScheduler.cancel(activity,a.getString("id"));NativeEvents.emit("alarms",AlarmScheduler.all(activity).toString());"true"}
         "notify"->{require(granted("notifications")){"امنح صلاحية الإشعارات أولًا"};val n=NotificationCompat.Builder(activity,DonMuseApp.CHANNEL_GENERAL).setSmallIcon(R.drawable.ic_notification).setContentTitle(a.getString("title").take(100)).setContentText(a.getString("body").take(500)).setAutoCancel(true).setContentIntent(android.app.PendingIntent.getActivity(activity,0,Intent(activity,MainActivity::class.java),android.app.PendingIntent.FLAG_IMMUTABLE)).build();NotificationManagerCompat.from(activity).notify(4001,n);"true"}
