@@ -5,7 +5,7 @@ DON MUSE's combined Android distribution links GPL/copyleft components. The proj
 | Component | Version used | Upstream / license information |
 |---|---|---|
 | NewPipeExtractor | v0.27.1 | https://github.com/TeamNewPipe/NewPipeExtractor — GPL-3.0; corresponding source is the pinned tag. |
-| FFmpegKit maintained full | 8.1.9 | https://github.com/ffmpegkit-maintained/ffmpeg — FFmpegKit LGPL-3.0; the *full* binary bundle includes FFmpeg and external codec libraries with their own GPL/LGPL terms. Review the exact build configuration and provide corresponding source/offers required for your distribution. |
+| FFmpegKit maintained full | 8.1.9 (`v8.1.9-lts-android`) | https://github.com/ffmpegkit-maintained/ffmpeg — the non-GPL `ffmpeg-kit-full` tier is LGPL-3.0 and bundles FFmpeg/codec libraries with their own notices. We do not use the `-gpl` tier. Review the exact build configuration and provide corresponding source/offers required for your distribution. |
 | AndroidX Media3 | 1.4.1 | https://github.com/androidx/media — Apache-2.0. |
 | AndroidX Core/Activity/WebKit/DocumentFile | versions in `android/app/build.gradle.kts` | https://github.com/androidx/androidx — Apache-2.0. |
 | OkHttp | 4.12.0 | https://github.com/square/okhttp — Apache-2.0. |

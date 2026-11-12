@@ -50,8 +50,26 @@ jobs:
       - name: Compile Kotlin and build APKs
         working-directory: android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+      - name: Surface compiler diagnostics as annotations
+        if: failure() && hashFiles('android/build.log') != ''
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path('android/build.log').read_text(errors='replace').splitlines()
+          selected = [l for l in lines if l.startswith('e:') or 'What went wrong' in l or 'Could not ' in l or 'Execution failed' in l or l.startswith('Caused by:')]
+          for line in selected[-60:]:
+              print('::error title=Gradle build::' + line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'))
+          PY
+      - name: Upload Gradle log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gradle-build-log
+          path: android/build.log
+          if-no-files-found: ignore
       - name: Android lint
         working-directory: android
         run: ./gradlew :app:lintDebug --no-daemon --stacktrace
