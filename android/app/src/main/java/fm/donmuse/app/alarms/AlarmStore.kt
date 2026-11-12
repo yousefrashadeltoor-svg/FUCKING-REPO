@@ -33,9 +33,11 @@ object AlarmScheduler {
         arm(ctx,alarm);return alarm
     }
     private fun pending(ctx:Context,id:String):PendingIntent=PendingIntent.getBroadcast(ctx,id.hashCode(),Intent(ctx,AlarmReceiver::class.java).setAction("fm.donmuse.ALARM").putExtra("id",id).setData(android.net.Uri.parse("donmuse://alarm/$id")),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    @android.annotation.SuppressLint("MissingPermission")
     private fun arm(ctx:Context,a:JSONObject){
         val mgr=ctx.getSystemService(AlarmManager::class.java);val pi=pending(ctx,a.getString("id"));mgr.cancel(pi)
         if(!a.optBoolean("enabled",true))return
+        if(Build.VERSION.SDK_INT>=31&&!mgr.canScheduleExactAlarms())return
         val show=PendingIntent.getActivity(ctx,a.getString("id").hashCode(),Intent(ctx,AlarmActivity::class.java).putExtra("id",a.getString("id")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         mgr.setAlarmClock(AlarmManager.AlarmClockInfo(a.getLong("at"),show),pi)
     }

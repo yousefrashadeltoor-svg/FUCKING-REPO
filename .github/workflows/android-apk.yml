@@ -61,10 +61,11 @@ jobs:
       - name: Surface compiler diagnostics as annotations
         if: failure() && hashFiles('android/build.log') != ''
         run: |
+          cat android/app/build/reports/lint-results-debug.txt >> android/build.log 2>/dev/null || true
           python3 - <<'PY'
           from pathlib import Path
           lines = Path('android/build.log').read_text(errors='replace').splitlines()
-          selected = [l for l in lines if l.startswith('e:') or 'What went wrong' in l or 'Could not ' in l or 'Execution failed' in l or l.startswith('Caused by:')]
+          selected = [l for l in lines if l.startswith('e:') or ': Error: ' in l or 'What went wrong' in l or 'Could not ' in l or 'Execution failed' in l or l.startswith('Caused by:')]
           def esc(text):
               return text.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
           for line in selected[:9]:
